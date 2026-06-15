@@ -1,0 +1,20 @@
+# A* Planner Configuration
+
+planner: astar
+
+map:
+  resolution: 0.05         # metres per cell
+
+robot:
+  radius: 0.25             # robot radius in metres
+
+astar:
+  connectivity: 8          # 4 or 8 neighbouring directions
+  heuristic: euclidean     # euclidean, manhattan, or diagonal
+  heuristic_weight: 1.0    # weight on h(n); 1.0 = standard A*
+  allow_diagonal: true     # whether diagonal moves are allowed
+
+output:
+  save_path: true          # save path as CSV
+  save_metrics: true       # save metrics as JSON
+  save_visualization: true # save visualization image (via Python script)

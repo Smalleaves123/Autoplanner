@@ -1,0 +1,15 @@
+build/
+cmake-build-*/
+.vscode/
+.idea/
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+pycache/
+.pyc
+.pytest_cache/
+results/
+!results/.gitkeep

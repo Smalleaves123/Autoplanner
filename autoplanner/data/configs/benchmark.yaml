@@ -1,0 +1,48 @@
+# Benchmark Configuration
+#
+# Defines the set of maps, planners, and scenarios to run in a batch benchmark.
+
+benchmark:
+  # Number of repeated runs per (map, planner) pair for statistical stability.
+  repeat: 5
+
+  # Maps to benchmark on.
+  maps:
+    - data/maps/simple_50x50.txt
+    - data/maps/maze_100x100.txt
+    - data/maps/warehouse_100x100.txt
+    - data/maps/random_100x100_density_20.txt
+
+  # Planners to compare.
+  planners:
+    - dijkstra
+    - astar
+    - weighted_astar
+    - improved_astar
+    - jps
+    - rrt
+    - rrt_star
+
+  # Start/goal pairs for each map (overridden by scenario default below).
+  scenarios:
+    - start: [5, 5]
+      goal: [45, 45]
+    - start: [1, 1]
+      goal: [98, 98]
+    - start: [3, 5]
+      goal: [90, 80]
+
+  # Metrics to collect.
+  metrics:
+    - success
+    - planning_time_ms
+    - path_length
+    - expanded_nodes
+    - iterations
+    - turning_count
+    - smoothness_score
+    - minimum_obstacle_distance
+
+output:
+  csv: results/benchmark/all_results.csv
+  summary_json: results/benchmark/summary.json

@@ -1,0 +1,28 @@
+# Improved A* Planner Configuration
+#
+# Improved A* extends the standard A* cost function with two additional terms:
+#   f(n) = g(n) + w_h * h(n) + w_obs * obstacle_cost(n) + w_turn * turning_cost(n)
+#
+# This encourages paths that stay farther from obstacles and have fewer turns.
+
+planner: improved_astar
+
+map:
+  resolution: 0.05
+
+robot:
+  radius: 0.25
+  inflation_radius: 0.35   # extra margin beyond robot radius
+
+astar:
+  connectivity: 8
+  heuristic: euclidean
+  heuristic_weight: 1.0    # w_h — standard heuristic weight
+  obstacle_weight: 2.0     # w_obs — higher values push path away from walls
+  turning_weight: 0.5      # w_turn — higher values reduce direction changes
+  allow_diagonal: true
+
+output:
+  save_path: true
+  save_metrics: true
+  save_visualization: true
