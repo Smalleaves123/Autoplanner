@@ -67,10 +67,28 @@ PurePursuitController::PurePursuitController(double lookahead, double wheelbase)
 Control PurePursuitController::compute(const State& state,
                                         const Trajectory& traj,
                                         double target_vel) {
-    // Find the lookahead point — first point on trajectory > lookahead_ away
+    if (traj.empty()) return {};
+
+    // Start searching from the closest point instead of always using the
+    // beginning of the trajectory. This matters for long planner paths.
+    std::size_t closest_index = 0;
+    double closest_distance = std::numeric_limits<double>::max();
+    for (std::size_t i = 0; i < traj.size(); ++i) {
+        double dx = traj[i].x - state.x;
+        double dy = traj[i].y - state.y;
+        double distance = std::sqrt(dx * dx + dy * dy);
+        if (distance < closest_distance) {
+            closest_distance = distance;
+            closest_index = i;
+        }
+    }
+
+    // Find the lookahead point — first point after the closest point that is
+    // at least lookahead_ away from the robot.
     TrajectoryPoint lookahead_pt;
     bool found = false;
-    for (auto& p : traj) {
+    for (std::size_t i = closest_index; i < traj.size(); ++i) {
+        const auto& p = traj[i];
         double dx = p.x - state.x;
         double dy = p.y - state.y;
         if (std::sqrt(dx * dx + dy * dy) >= lookahead_) {
@@ -79,7 +97,7 @@ Control PurePursuitController::compute(const State& state,
             break;
         }
     }
-    if (!found && !traj.empty()) lookahead_pt = traj.back();
+    if (!found) lookahead_pt = traj.back();
 
     // Transform lookahead point to vehicle frame
     double dx = lookahead_pt.x - state.x;

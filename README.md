@@ -23,6 +23,34 @@ cmake --build build -j
 ./build/autompc/examples/circle_tracking
 ```
 
+## Python Experiment Workflow
+
+Python is used for experiment orchestration and analysis; the planning and
+tracking core remains C++. From the repository root:
+
+```bash
+python3 autoplanner/scripts/run_all_experiments.py \
+    --build_dir build \
+    --output_dir autoplanner/results/benchmark
+
+python3 autoplanner/scripts/compare_results.py \
+    autoplanner/results/benchmark/all_results.csv
+
+# End-to-end planning and tracking
+python3 autoplanner/scripts/run_navigation_pipeline.py \
+    --build_dir build \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --planner improved_astar \
+    --controller stanley
+```
+
+The batch runner invokes the C++ planner CLI and collects the machine-readable
+`metrics.json` output, making it easy to add maps, planners, repeats, and plots
+without changing the C++ benchmark code.
+
+The navigation pipeline applies collision-safe shortcut smoothing by default;
+pass `--smooth none` when the raw planner path is required.
+
 ## Test
 
 ```bash

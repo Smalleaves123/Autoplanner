@@ -91,3 +91,14 @@ AutoPlanner (path planning) → Trajectory → AutoMPC (tracking) → Control co
 ```
 
 Use AutoPlanner's path output as AutoMPC's reference trajectory input.
+
+The CLI also accepts an AutoPlanner waypoint CSV directly:
+
+```bash
+./build/apps/autompc_cli \
+    --controller stanley \
+    --trajectory path \
+    --path ../autoplanner/results/path.csv \
+    --velocity 1.0 \
+    --output results/path_tracking.csv
+```

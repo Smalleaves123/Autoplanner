@@ -9,10 +9,15 @@ Usage:
 """
 import argparse
 import csv
+import json
 import os
 import subprocess
 import sys
-import time
+from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+AUTOPLANNER_DIR = SCRIPT_DIR.parent
 
 
 PLANNERS = {
@@ -26,10 +31,10 @@ PLANNERS = {
 }
 
 MAPS = [
-    ("simple_50x50",            "data/maps/simple_50x50.txt",            (1, 1), (48, 48)),
-    ("maze_100x100",            "data/maps/maze_100x100.txt",            (1, 1), (98, 98)),
-    ("warehouse_100x100",       "data/maps/warehouse_100x100.txt",       (3, 5), (90, 80)),
-    ("random_100x100_density_20", "data/maps/random_100x100_density_20.txt", (1, 1), (98, 98)),
+    ("simple_50x50",            "maps/simple_50x50.txt",            (1, 1), (48, 48)),
+    ("maze_100x100",            "maps/maze_100x100.txt",            (1, 1), (98, 98)),
+    ("warehouse_100x100",       "maps/warehouse_100x100.txt",       (3, 5), (90, 80)),
+    ("random_100x100_density_20", "maps/random_100x100_density_20.txt", (1, 1), (98, 98)),
 ]
 
 
@@ -47,43 +52,39 @@ def run_planner(cli: str, planner: str, extra_args: list[str],
     ] + extra_args
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    stdout = result.stdout
+    metrics_path = Path(output_dir) / "metrics.json"
+    data = {
+        "planner": planner,
+        "map": os.path.basename(map_path),
+        "success": False,
+        "time_ms": 0.0,
+        "path_length": 0.0,
+        "expanded_nodes": 0,
+    }
 
-    success = "SUCCESS" in stdout
-    data = {"planner": planner, "map": os.path.basename(map_path),
-            "success": success}
+    if metrics_path.exists():
+        try:
+            with metrics_path.open() as f:
+                metrics = json.load(f)
+            data.update({
+                "success": bool(metrics.get("success", False)),
+                "time_ms": float(metrics.get("planning_time_ms", 0.0)),
+                "path_length": float(metrics.get("path_length", 0.0)),
+                "expanded_nodes": int(metrics.get("expanded_nodes", 0)),
+            })
+        except (OSError, ValueError, TypeError):
+            pass
 
-    # Parse metrics from output line: "SUCCESS  Time: X ms  Length: Y  Nodes: Z  Points: W"
-    for part in stdout.split():
-        if part == "Time:":
-            idx = stdout.split().index("Time:")
-            try:
-                data["time_ms"] = float(stdout.split()[idx + 1])
-            except (ValueError, IndexError):
-                data["time_ms"] = 0.0
-        elif part == "Length:":
-            idx = stdout.split().index("Length:")
-            try:
-                data["path_length"] = float(stdout.split()[idx + 1])
-            except (ValueError, IndexError):
-                data["path_length"] = 0.0
-        elif part == "Nodes:":
-            idx = stdout.split().index("Nodes:")
-            try:
-                data["expanded_nodes"] = int(stdout.split()[idx + 1])
-            except (ValueError, IndexError):
-                data["expanded_nodes"] = 0
-
-    data.setdefault("time_ms", 0.0)
-    data.setdefault("path_length", 0.0)
-    data.setdefault("expanded_nodes", 0)
+    if result.returncode != 0:
+        data["success"] = False
     return data
 
 
 def main():
     ap = argparse.ArgumentParser(description="Batch benchmark runner")
     ap.add_argument("--build_dir", default="build", help="CMake build directory")
-    ap.add_argument("--data_dir", default="data", help="Data directory root")
+    ap.add_argument("--data_dir", default=str(AUTOPLANNER_DIR / "data"),
+                    help="Data directory root")
     ap.add_argument("--output_dir", default="results/benchmark",
                     help="Output directory for results")
     ap.add_argument("--planners", nargs="*",
@@ -93,21 +94,27 @@ def main():
                     help="Number of repeats per (planner, map) pair")
     args = ap.parse_args()
 
-    cli = os.path.join(args.build_dir, "apps", "autoplanner_cli")
+    cli = os.path.abspath(os.path.join(args.build_dir, "apps", "autoplanner_cli"))
     if not os.path.exists(cli):
         print(f"CLI not found: {cli}. Build the project first.", file=sys.stderr)
         sys.exit(1)
 
     os.makedirs(args.output_dir, exist_ok=True)
 
+    map_root = Path(args.data_dir)
+    maps = [
+        (name, str(map_root / relative_path), start, goal)
+        for name, relative_path, start, goal in MAPS
+    ]
+
     all_results = []
-    total = len(args.planners) * len(MAPS) * args.repeat
+    total = len(args.planners) * len(maps) * args.repeat
     completed = 0
 
     for rep in range(args.repeat):
         for planner in args.planners:
             extra = PLANNERS.get(planner, [])
-            for map_name, map_path, start, goal in MAPS:
+            for map_name, map_path, start, goal in maps:
                 if not os.path.exists(map_path):
                     print(f"  [SKIP] map not found: {map_path}")
                     completed += 1

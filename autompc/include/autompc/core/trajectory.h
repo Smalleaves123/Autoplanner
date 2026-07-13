@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "autompc/core/types.h"
@@ -23,5 +24,10 @@ Trajectory makeCircle(double radius, double velocity, int n);
 // Generate a straight-line trajectory.
 Trajectory makeStraightLine(double x0, double y0, double x1, double y1,
                              double velocity, int n);
+
+// Load an x,y waypoint CSV (as produced by AutoPlanner) and derive heading
+// angles for each waypoint.
+bool loadPathCsv(const std::string& file_path, double velocity,
+                 Trajectory& trajectory);
 
 }  // namespace autompc

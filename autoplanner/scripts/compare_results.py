@@ -1,79 +1,119 @@
 #!/usr/bin/env python3
-"""Compare benchmark results across planners with summary statistics.
+"""Compare benchmark results using only Python's standard library.
 
 Usage:
     python scripts/compare_results.py results/benchmark/all_results.csv
 """
 import argparse
+import csv
+import statistics
 import sys
+from collections import defaultdict
 
-import pandas as pd
+
+METRICS = ("time_ms", "path_length", "expanded_nodes")
+
+
+def load_rows(path):
+    try:
+        with open(path, newline="") as f:
+            rows = list(csv.DictReader(f))
+    except FileNotFoundError:
+        print(f"File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+
+    for row in rows:
+        row["success"] = row.get("success", "").lower() in ("1", "true", "yes")
+        for metric in METRICS:
+            try:
+                row[metric] = float(row.get(metric, 0.0))
+            except (TypeError, ValueError):
+                row[metric] = 0.0
+    return rows
+
+
+def group_by(rows, key):
+    groups = defaultdict(list)
+    for row in rows:
+        groups[row.get(key, "unknown")].append(row)
+    return groups
+
+
+def mean(rows, metric):
+    values = [row[metric] for row in rows]
+    return statistics.fmean(values) if values else 0.0
+
+
+def format_table(headers, table):
+    widths = [len(str(header)) for header in headers]
+    for row in table:
+        for i, value in enumerate(row):
+            widths[i] = max(widths[i], len(str(value)))
+
+    def render(row):
+        return "  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row))
+
+    return "\n".join([render(headers), render(["-" * width for width in widths])]
+                     + [render(row) for row in table])
+
+
+def build_report(rows):
+    lines = ["=" * 70, "BENCHMARK SUMMARY", "=" * 70]
+
+    planner_groups = group_by(rows, "planner")
+    success_table = []
+    for planner, group in sorted(planner_groups.items()):
+        success_table.append([
+            planner,
+            f"{100.0 * sum(row['success'] for row in group) / len(group):.1f}%",
+            len(group),
+        ])
+    lines += ["", "--- Success Rate by Planner ---",
+              format_table(["Planner", "Success %", "Runs"], success_table)]
+
+    ok = [row for row in rows if row["success"]]
+    if ok:
+        avg_table = []
+        for planner, group in sorted(group_by(ok, "planner").items()):
+            avg_table.append([planner] + [f"{mean(group, metric):.3f}" for metric in METRICS])
+        lines += ["", "--- Average Metrics (successful runs only) ---",
+                  format_table(["Planner", *METRICS], avg_table)]
+
+        lines += ["", "--- Planning Time (ms) by Planner x Map ---"]
+        lines.append(format_pivot(ok, "time_ms"))
+        lines += ["", "--- Path Length by Planner x Map ---"]
+        lines.append(format_pivot(ok, "path_length"))
+
+    lines.append("=" * 70)
+    return "\n".join(lines)
+
+
+def format_pivot(rows, metric):
+    maps = sorted({row.get("map", "unknown") for row in rows})
+    planners = sorted({row.get("planner", "unknown") for row in rows})
+    table = []
+    for planner in planners:
+        values = []
+        for map_name in maps:
+            selected = [row for row in rows
+                        if row.get("planner") == planner and row.get("map") == map_name]
+            values.append(f"{mean(selected, metric):.3f}" if selected else "-")
+        table.append([planner, *values])
+    return format_table(["Planner", *maps], table)
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Summarize and compare benchmark CSV results")
-    ap.add_argument("csv_path", help="Path to benchmark CSV file")
-    ap.add_argument("--output", "-o", default=None,
-                    help="Save summary to file (optional)")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description="Summarize benchmark CSV results")
+    parser.add_argument("csv_path", help="benchmark CSV file")
+    parser.add_argument("--output", "-o", default=None,
+                        help="save the text summary to a file")
+    args = parser.parse_args()
 
-    try:
-        df = pd.read_csv(args.csv_path)
-    except FileNotFoundError:
-        print(f"File not found: {args.csv_path}", file=sys.stderr)
-        sys.exit(1)
-
-    print("=" * 70)
-    print("BENCHMARK SUMMARY")
-    print("=" * 70)
-
-    # Success rate by planner
-    print("\n--- Success Rate by Planner ---")
-    success_rate = df.groupby("planner")["success"].agg(["mean", "count"])
-    success_rate["mean"] = success_rate["mean"] * 100
-    success_rate.columns = ["Success %", "Runs"]
-    print(success_rate.to_string(float_format="%.1f"))
-
-    # Average metrics by planner (successful runs only)
-    ok = df[df["success"] == True]
-    if not ok.empty:
-        print("\n--- Average Metrics (successful runs only) ---")
-        metrics = ["time_ms", "path_length", "expanded_nodes"]
-        available = [m for m in metrics if m in ok.columns]
-        if available:
-            summary = ok.groupby("planner")[available].mean()
-            print(summary.to_string(float_format="%.3f"))
-
-    # By map
-    print("\n--- Success Rate by Map ---")
-    map_rate = df.groupby("map")["success"].agg(["mean", "count"])
-    map_rate["mean"] = map_rate["mean"] * 100
-    map_rate.columns = ["Success %", "Runs"]
-    print(map_rate.to_string(float_format="%.1f"))
-
-    # Planner × Map pivot
-    if "time_ms" in df.columns:
-        print("\n--- Planning Time (ms) by Planner × Map ---")
-        piv = ok.pivot_table(values="time_ms", index="planner",
-                             columns="map", aggfunc="mean")
-        print(piv.to_string(float_format="%.2f"))
-
-        print("\n--- Path Length by Planner × Map ---")
-        piv_len = ok.pivot_table(values="path_length", index="planner",
-                                 columns="map", aggfunc="mean")
-        print(piv_len.to_string(float_format="%.2f"))
-
-    print("=" * 70)
-
-    # Optionally save
+    report = build_report(load_rows(args.csv_path))
+    print(report)
     if args.output:
         with open(args.output, "w") as f:
-            f.write("Success Rate by Planner\n")
-            f.write(success_rate.to_string())
-            if not ok.empty:
-                f.write("\n\nAverage Metrics\n")
-                f.write(summary.to_string())
+            f.write(report + "\n")
         print(f"\nSummary saved to {args.output}")
 
 

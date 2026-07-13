@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <fstream>
 
 #include "autompc/autompc.h"
 
@@ -27,6 +28,23 @@ TEST(Trajectory, Interpolate) {
     auto pt = interpolate(t, 5.0);
     EXPECT_NEAR(pt.x, 5.0, 1e-9);
     EXPECT_NEAR(pt.y, 0.0, 1e-9);
+}
+
+TEST(Trajectory, LoadPathCsv) {
+    const std::string path = "/tmp/autompc_test_path.csv";
+    std::ofstream out(path);
+    out << "x,y\n0,0\n3,0\n3,4\n";
+    out.close();
+
+    Trajectory trajectory;
+    ASSERT_TRUE(loadPathCsv(path, 2.0, trajectory));
+    ASSERT_GT(trajectory.size(), 3u);
+    EXPECT_DOUBLE_EQ(trajectory.front().x, 0.0);
+    EXPECT_DOUBLE_EQ(trajectory.back().x, 3.0);
+    EXPECT_DOUBLE_EQ(trajectory.back().y, 4.0);
+    EXPECT_DOUBLE_EQ(trajectory[0].theta, 0.0);
+    EXPECT_NEAR(trajectory[trajectory.size() / 2].theta, M_PI_2, 1e-9);
+    EXPECT_DOUBLE_EQ(trajectory[2].v, 2.0);
 }
 
 TEST(Kinematics, Step) {
