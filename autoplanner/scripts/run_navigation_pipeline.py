@@ -64,6 +64,11 @@ def main() -> int:
     parser.add_argument("--dt", type=float, default=0.05)
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--robot-radius", type=float, default=1.0)
+    parser.add_argument("--footprint", choices=("point", "circle", "rectangle"),
+                        default="point")
+    parser.add_argument("--robot-length", type=float, default=0.0)
+    parser.add_argument("--robot-width", type=float, default=0.0)
+    parser.add_argument("--inflate", action="store_true")
     parser.add_argument("--weight", type=float, default=1.5)
     parser.add_argument("--smooth", choices=("none", "shortcut"), default="shortcut")
     parser.add_argument("--smooth-iterations", type=int, default=100)
@@ -98,6 +103,14 @@ def main() -> int:
         planner_cmd += ["--robot-radius", str(args.robot_radius)]
     if args.planner == "weighted_astar":
         planner_cmd += ["--weight", str(args.weight)]
+    if args.footprint != "point":
+        planner_cmd += ["--footprint", args.footprint,
+                        "--robot-radius", str(args.robot_radius)]
+    if args.footprint == "rectangle":
+        planner_cmd += ["--robot-length", str(args.robot_length),
+                        "--robot-width", str(args.robot_width)]
+    if args.inflate:
+        planner_cmd.append("--inflate")
     if args.smooth != "none":
         planner_cmd += ["--smooth", args.smooth,
                         "--smooth-iterations", str(args.smooth_iterations)]

@@ -1,7 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <fstream>
+#include <string>
+
 #include "autoplanner/collision/grid_collision_checker.h"
 #include "autoplanner/collision/line_collision_checker.h"
+#include "autoplanner/collision/footprint_collision_checker.h"
 #include "autoplanner/core/grid_map.h"
 
 using namespace autoplanner;
@@ -76,4 +81,39 @@ TEST_F(CollisionCheckerTest, LineCheckerCustomResolution) {
 
     // Finer resolution should still work.
     EXPECT_TRUE(checker.isSegmentValid(Point2d{5.0, 5.0}, Point2d{10.0, 10.0}));
+}
+
+TEST(FootprintCollisionCheckerTest, CircleRejectsNearbyObstacle) {
+    std::ofstream file("/tmp/footprint_circle_map.txt");
+    for (int y = 0; y < 10; ++y) {
+        std::string row(10, '0');
+        if (y == 5) row[6] = '1';
+        file << row << '\n';
+    }
+    file.close();
+
+    GridMap map;
+    ASSERT_TRUE(map.loadFromTxt("/tmp/footprint_circle_map.txt"));
+    FootprintCollisionChecker checker(map, RobotFootprint::circle(1.0));
+
+    EXPECT_TRUE(checker.isPoseValid({2.0, 5.0, 0.0}));
+    EXPECT_FALSE(checker.isPoseValid({5.5, 5.0, 0.0}));
+}
+
+TEST(FootprintCollisionCheckerTest, RectangleUsesHeading) {
+    std::ofstream file("/tmp/footprint_rectangle_map.txt");
+    for (int y = 0; y < 12; ++y) {
+        std::string row(12, '0');
+        if (y == 4) row[5] = '1';
+        file << row << '\n';
+    }
+    file.close();
+
+    GridMap map;
+    ASSERT_TRUE(map.loadFromTxt("/tmp/footprint_rectangle_map.txt"));
+    FootprintCollisionChecker checker(
+        map, RobotFootprint::rectangle(4.0, 1.0));
+
+    EXPECT_TRUE(checker.isPoseValid({2.0, 8.0, 0.0}));
+    EXPECT_FALSE(checker.isPoseValid({5.0, 5.0, M_PI_2}));
 }

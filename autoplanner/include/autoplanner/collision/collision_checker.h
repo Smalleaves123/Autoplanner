@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "autoplanner/core/point.h"
+#include "autoplanner/core/pose.h"
 
 namespace autoplanner {
 
@@ -20,6 +21,13 @@ public:
 
     // True if every segment along a path is collision-free.
     virtual bool isPathValid(const std::vector<Point2d>& path) const = 0;
+
+    // Pose-aware variants. Point-only checkers inherit these defaults, while
+    // footprint checkers can account for robot orientation and dimensions.
+    virtual bool isPoseValid(const Pose2d& pose) const;
+    virtual bool isPoseSegmentValid(const Pose2d& p1,
+                                    const Pose2d& p2) const;
+    virtual bool isPosePathValid(const std::vector<Pose2d>& path) const;
 };
 
 }  // namespace autoplanner

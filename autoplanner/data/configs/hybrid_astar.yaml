@@ -1,0 +1,20 @@
+planner: hybrid_astar
+
+map:
+  resolution: 1.0
+
+robot:
+  footprint: rectangle
+  length: 2.0
+  width: 1.0
+  inflate: true
+  inflation_radius: 1.2
+
+hybrid_astar:
+  turning_radius: 5.0
+  step_size: 1.0
+  angle_bins: 72
+
+output:
+  save_path: true
+  save_metrics: true

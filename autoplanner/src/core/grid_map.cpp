@@ -1,6 +1,8 @@
 #include "autoplanner/core/grid_map.h"
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -97,6 +99,33 @@ void GridMap::setResolution(double resolution) {
 
 double GridMap::resolution() const {
     return resolution_;
+}
+
+void GridMap::inflateObstacles(double radius) {
+    if (isEmpty() || radius <= 0.0) return;
+
+    const double cell_size = resolution_ > 0.0 ? resolution_ : 1.0;
+    const int radius_cells = static_cast<int>(std::ceil(radius / cell_size));
+    const std::vector<int> original = data_;
+
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
+            bool occupied = false;
+            for (int dy = -radius_cells; dy <= radius_cells && !occupied; ++dy) {
+                for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+                    if (dx * dx + dy * dy > radius_cells * radius_cells) continue;
+                    const int nx = x + dx;
+                    const int ny = y + dy;
+                    if (isInside(nx, ny) &&
+                        original[static_cast<std::size_t>(index(nx, ny))] != 0) {
+                        occupied = true;
+                        break;
+                    }
+                }
+            }
+            if (occupied) data_[static_cast<std::size_t>(index(x, y))] = 1;
+        }
+    }
 }
 
 bool GridMap::isEmpty() const {

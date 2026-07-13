@@ -16,6 +16,7 @@ add_library(autoplanner STATIC
     # core
     src/core/grid_map.cpp
     src/core/path.cpp
+    src/core/planner_factory.cpp
     src/core/planner_result.cpp
     src/core/types.cpp
 
@@ -43,6 +44,8 @@ add_library(autoplanner STATIC
     src/costmap/obstacle_cost_layer.cpp
 
     # collision
+    src/collision/collision_checker.cpp
+    src/collision/footprint_collision_checker.cpp
     src/collision/grid_collision_checker.cpp
     src/collision/line_collision_checker.cpp
 

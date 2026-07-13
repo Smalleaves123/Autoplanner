@@ -45,3 +45,22 @@ TEST(ConfigLoader, EmptyFile) {
     ASSERT_TRUE(cfg.load("/tmp/test_empty.txt"));
     EXPECT_EQ(cfg.size(), 0u);
 }
+
+TEST(ConfigLoader, LoadYamlScalars) {
+    std::ofstream fout("/tmp/test_config.yaml");
+    fout << "planner: improved_astar\n";
+    fout << "map:\n";
+    fout << "  resolution: 0.05\n";
+    fout << "robot:\n";
+    fout << "  radius: 0.25 # metres\n";
+    fout << "astar:\n";
+    fout << "  allow_diagonal: false\n";
+    fout.close();
+
+    ConfigLoader cfg;
+    ASSERT_TRUE(cfg.load("/tmp/test_config.yaml"));
+    EXPECT_EQ(cfg.getString("planner"), "improved_astar");
+    EXPECT_DOUBLE_EQ(cfg.getDouble("map.resolution"), 0.05);
+    EXPECT_DOUBLE_EQ(cfg.getDouble("robot.radius"), 0.25);
+    EXPECT_FALSE(cfg.getBool("astar.allow_diagonal", true));
+}

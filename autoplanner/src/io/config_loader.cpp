@@ -3,55 +3,101 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 namespace autoplanner {
 namespace io {
+
+namespace {
+
+std::string trim(const std::string& value) {
+    std::size_t begin = 0;
+    while (begin < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+
+    std::size_t end = value.size();
+    while (end > begin &&
+           std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
+std::string removeInlineComment(const std::string& value) {
+    const std::size_t comment = value.find('#');
+    return trim(comment == std::string::npos ? value
+                                             : value.substr(0, comment));
+}
+
+}  // namespace
 
 bool ConfigLoader::load(const std::string& path) {
     std::ifstream fin(path);
     if (!fin.is_open()) return false;
 
+    values_.clear();
+    std::vector<std::pair<int, std::string>> sections;
     std::string line;
     while (std::getline(fin, line)) {
-        // Trim whitespace
-        size_t start = 0;
-        while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start])))
-            start++;
-        size_t end = line.size();
-        while (end > start && std::isspace(static_cast<unsigned char>(line[end - 1])))
-            end--;
-        line = line.substr(start, end - start);
+        const std::size_t first_non_space = line.find_first_not_of(" \t");
+        if (first_non_space == std::string::npos) continue;
+        const int indent = static_cast<int>(first_non_space);
+        line = removeInlineComment(line.substr(first_non_space));
 
-        // Skip empty lines and comments
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty()) continue;
 
-        // Skip section headers
-        if (line[0] == '[') continue;
+        // INI-style section headers remain supported.
+        if (line.front() == '[' && line.back() == ']') {
+            sections.clear();
+            sections.emplace_back(indent, trim(line.substr(1, line.size() - 2)));
+            continue;
+        }
 
-        // Parse key = value
-        size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
+        // YAML lists are not needed for scalar planner parameters.
+        if (line.front() == '-') continue;
 
-        std::string key = line.substr(0, eq);
-        std::string value = line.substr(eq + 1);
+        const std::size_t eq = line.find('=');
+        const std::size_t colon = line.find(':');
+        std::size_t separator = eq;
+        if (separator == std::string::npos ||
+            (colon != std::string::npos && colon < separator)) {
+            separator = colon;
+        }
+        if (separator == std::string::npos) continue;
 
-        // Trim key
-        size_t kend = key.size();
-        while (kend > 0 && std::isspace(static_cast<unsigned char>(key[kend - 1])))
-            kend--;
-        key = key.substr(0, kend);
+        const std::string key = trim(line.substr(0, separator));
+        const std::string value = removeInlineComment(
+            line.substr(separator + 1));
+        if (key.empty()) continue;
 
-        // Trim value
-        size_t vstart = 0;
-        while (vstart < value.size() && std::isspace(static_cast<unsigned char>(value[vstart])))
-            vstart++;
-        value = value.substr(vstart);
+        while (!sections.empty() && sections.back().first >= indent) {
+            sections.pop_back();
+        }
 
-        // Remove quotes if present
-        if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-            value = value.substr(1, value.size() - 2);
+        if (value.empty()) {
+            sections.emplace_back(indent, key);
+            continue;
+        }
 
-        values_[key] = value;
+        std::string full_key;
+        for (const auto& section : sections) {
+            if (!full_key.empty()) full_key += '.';
+            full_key += section.second;
+        }
+        if (!full_key.empty()) full_key += '.';
+        full_key += key;
+
+        std::string normalized_value = value;
+        if (normalized_value.size() >= 2 &&
+            normalized_value.front() == '"' &&
+            normalized_value.back() == '"') {
+            normalized_value = normalized_value.substr(
+                1, normalized_value.size() - 2);
+        }
+
+        values_[full_key] = normalized_value;
     }
     return true;
 }
@@ -80,6 +126,9 @@ bool ConfigLoader::getBool(const std::string& key, bool default_val) const {
     auto it = values_.find(key);
     if (it == values_.end()) return default_val;
     std::string v = it->second;
+    for (char& c : v) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return v == "true" || v == "1" || v == "yes" || v == "on";
 }
 

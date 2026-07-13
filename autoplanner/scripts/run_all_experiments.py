@@ -26,8 +26,12 @@ PLANNERS = {
     "weighted_astar": ["--weight", "1.5"],
     "improved_astar": ["--robot-radius", "1.0"],
     "jps":        [],
+    "dstar_lite": [],
     "rrt":        [],
     "rrt_star":   [],
+    "informed_rrt_star": [],
+    "bi_rrt":     [],
+    "hybrid_astar": [],
 }
 
 MAPS = [

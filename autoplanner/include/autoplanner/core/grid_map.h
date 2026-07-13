@@ -30,6 +30,10 @@ public:
     void setResolution(double resolution);
     double resolution() const;
 
+    // Inflate occupied cells by a circular radius in world units.
+    // This returns a conservative map suitable for point-robot planners.
+    void inflateObstacles(double radius);
+
     // Flatten 2-D coordinates into a 1-D row-major index.
     // Returns -1 for out-of-bounds coordinates.
     int index(int x, int y) const;

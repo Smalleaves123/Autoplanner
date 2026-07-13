@@ -150,6 +150,29 @@ cmake --build build -j
     --output results/astar_smoothed
 ```
 
+The planner CLI now supports every planner through one factory and can load
+scalar parameters from YAML or `key=value` configuration files:
+
+```bash
+./build/apps/autoplanner_cli \
+    --config data/configs/astar.yaml \
+    --map data/maps/simple_50x50.txt \
+    --start 1 1 --goal 48 48
+```
+
+Finite robot footprints are supported with conservative map inflation and
+collision validation:
+
+```bash
+./build/apps/autoplanner_cli \
+    --planner astar \
+    --map data/maps/simple_50x50.txt \
+    --start 5 5 --goal 45 45 \
+    --footprint rectangle --robot-length 2.0 --robot-width 1.0 \
+    --inflate --smooth shortcut \
+    --output results/rectangle_robot
+```
+
 ### Compare All Planners
 
 ```bash

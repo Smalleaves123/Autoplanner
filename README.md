@@ -42,6 +42,14 @@ python3 autoplanner/scripts/run_navigation_pipeline.py \
     --map autoplanner/data/maps/simple_50x50.txt \
     --planner improved_astar \
     --controller stanley
+
+# Rectangle robot with conservative footprint inflation
+python3 autoplanner/scripts/run_navigation_pipeline.py \
+    --build_dir build \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --planner astar \
+    --controller pure_pursuit \
+    --footprint rectangle --robot-length 2.0 --robot-width 1.0 --inflate
 ```
 
 The batch runner invokes the C++ planner CLI and collects the machine-readable

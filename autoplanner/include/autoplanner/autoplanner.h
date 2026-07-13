@@ -7,6 +7,7 @@
 // ── Core data structures ───────────────────────────────────────────
 #include "autoplanner/core/grid_map.h"
 #include "autoplanner/core/path.h"
+#include "autoplanner/core/planner_factory.h"
 #include "autoplanner/core/planner_base.h"
 #include "autoplanner/core/planner_result.h"
 #include "autoplanner/core/point.h"
@@ -15,6 +16,7 @@
 
 // ── Collision checking ─────────────────────────────────────────────
 #include "autoplanner/collision/collision_checker.h"
+#include "autoplanner/collision/footprint_collision_checker.h"
 #include "autoplanner/collision/grid_collision_checker.h"
 #include "autoplanner/collision/line_collision_checker.h"
 
