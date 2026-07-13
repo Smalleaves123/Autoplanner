@@ -10,4 +10,5 @@
 
 #ifdef AUTOMPC_HAS_EIGEN
 #include "autompc/controllers/lqr_controller.h"
+#include "autompc/controllers/mpc_controller.h"
 #endif

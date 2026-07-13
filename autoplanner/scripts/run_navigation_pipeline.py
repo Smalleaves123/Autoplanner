@@ -57,7 +57,10 @@ def main() -> int:
     parser.add_argument("--map", default="autoplanner/data/maps/simple_50x50.txt")
     parser.add_argument("--planner", default="improved_astar")
     parser.add_argument("--controller", default="stanley",
-                        choices=("pid", "pure_pursuit", "stanley"))
+                        choices=("pid", "pure_pursuit", "stanley", "mpc"))
+    parser.add_argument("--mpc-horizon", type=int, default=15)
+    parser.add_argument("--max-velocity", type=float, default=2.0)
+    parser.add_argument("--max-steering", type=float, default=0.7)
     parser.add_argument("--start", nargs=2, type=int, default=(1, 1))
     parser.add_argument("--goal", nargs=2, type=int, default=(48, 48))
     parser.add_argument("--velocity", type=float, default=1.0)
@@ -140,6 +143,10 @@ def main() -> int:
         "--output", str(tracking_csv),
         "--metrics", str(tracking_metrics),
     ]
+    if args.controller == "mpc":
+        tracker_cmd += ["--mpc-horizon", str(args.mpc_horizon),
+                        "--max-velocity", str(args.max_velocity),
+                        "--max-steering", str(args.max_steering)]
 
     print(f"[2/2] Tracking {total_length:.2f} m with {steps} steps...")
     tracking = subprocess.run(tracker_cmd, text=True)

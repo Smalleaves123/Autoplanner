@@ -54,6 +54,9 @@ int main(int argc, char** argv) {
     int steps = 500;
     double dt = 0.05;
     double wheelbase = 1.0;
+    int mpc_horizon = 15;
+    double max_velocity = 2.0;
+    double max_steering = 0.7;
     std::string output = "results/tracking.csv";
     std::string path_file;
     std::string metrics_output;
@@ -67,17 +70,26 @@ int main(int argc, char** argv) {
         else if (a == "--velocity" && i+1 < argc) velocity = std::stod(argv[++i]);
         else if (a == "--steps" && i+1 < argc) steps = std::stoi(argv[++i]);
         else if (a == "--dt" && i+1 < argc) dt = std::stod(argv[++i]);
+        else if (a == "--mpc-horizon" && i+1 < argc)
+            mpc_horizon = std::stoi(argv[++i]);
+        else if (a == "--max-velocity" && i+1 < argc)
+            max_velocity = std::stod(argv[++i]);
+        else if (a == "--max-steering" && i+1 < argc)
+            max_steering = std::stod(argv[++i]);
         else if (a == "--output" && i+1 < argc) output = argv[++i];
         else if (a == "--metrics" && i+1 < argc) metrics_output = argv[++i];
         else if (a == "--help") {
             std::cout << "AutoMPC CLI\n"
-                << "  --controller  pid | pure_pursuit | stanley\n"
+                << "  --controller  pid | pure_pursuit | stanley | mpc\n"
                 << "  --trajectory  circle | line | path\n"
                 << "  --path PATH   AutoPlanner x,y CSV (required for path)\n"
                 << "  --radius N    circle radius (default 5.0)\n"
                 << "  --velocity N  target velocity (default 1.0)\n"
                 << "  --steps N     simulation steps (default 500)\n"
                 << "  --dt N        timestep (default 0.05)\n"
+                << "  --mpc-horizon N  MPC prediction horizon (default 15)\n"
+                << "  --max-velocity N  MPC velocity constraint\n"
+                << "  --max-steering N  MPC steering constraint\n"
                 << "  --output PATH CSV output path\n"
                 << "  --metrics PATH JSON metrics output (optional)\n";
             return 0;
@@ -133,6 +145,21 @@ int main(int argc, char** argv) {
             actual.push_back(s);
             if (trajectory_type == "path" && reachedPathGoal(s, ref)) break;
         }
+    } else if (controller_name == "mpc") {
+#ifdef AUTOMPC_HAS_EIGEN
+        State s = initial;
+        MPCController mpc(mpc_horizon, dt, wheelbase,
+                          max_velocity, max_steering);
+        for (int i = 0; i < steps; ++i) {
+            const auto u = mpc.compute(s, ref, velocity);
+            s = step(s, u, dt);
+            actual.push_back(s);
+            if (trajectory_type == "path" && reachedPathGoal(s, ref)) break;
+        }
+#else
+        std::cerr << "MPC requires Eigen3; rebuild with Eigen3 available.\n";
+        return 1;
+#endif
     } else {
         std::cerr << "Unknown controller: " << controller_name << "\n";
         return 1;

@@ -15,6 +15,7 @@ inputs (velocity + steering) to keep the robot on track.
 | **Pure Pursuit** | Geometric | Follows a lookahead point on the path |
 | **Stanley** | Geometric | Cross-track error + heading correction |
 | **LQR** | Optimal | Linear Quadratic Regulator (requires Eigen3) |
+| **MPC** | Predictive | Finite-horizon receding-horizon control (requires Eigen3) |
 
 ## Quick Start
 
@@ -34,9 +35,10 @@ python scripts/plot_tracking.py results/circle_pid.csv results/circle_pure_pursu
 ```bash
 ./build/apps/autompc_cli --controller pid --trajectory circle --radius 5.0 --steps 500
 ./build/apps/autompc_cli --controller stanley --trajectory line --steps 200
+./build/apps/autompc_cli --controller mpc --trajectory line --steps 200 --mpc-horizon 15
 ```
 
-### With Eigen3 (LQR controller)
+### With Eigen3 (LQR and MPC controllers)
 
 ```bash
 brew install eigen  # macOS

@@ -43,6 +43,13 @@ python3 autoplanner/scripts/run_navigation_pipeline.py \
     --planner improved_astar \
     --controller stanley
 
+# Finite-horizon MPC tracking
+python3 autoplanner/scripts/run_navigation_pipeline.py \
+    --build_dir build \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --planner improved_astar \
+    --controller mpc --mpc-horizon 15
+
 # Rectangle robot with conservative footprint inflation
 python3 autoplanner/scripts/run_navigation_pipeline.py \
     --build_dir build \

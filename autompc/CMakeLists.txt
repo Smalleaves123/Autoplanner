@@ -12,7 +12,7 @@ endif()
 
 # ── Dependencies ─────────────────────────────────────────────────────────
 
-# Eigen (optional, for LQR controller)
+# Eigen (optional, for LQR and finite-horizon MPC controllers)
 find_package(Eigen3 QUIET)
 if(Eigen3_FOUND)
     add_compile_definitions(AUTOMPC_HAS_EIGEN)
@@ -32,6 +32,7 @@ set(AUTOMPC_SOURCES
 
 if(Eigen3_FOUND)
     list(APPEND AUTOMPC_SOURCES src/controllers/lqr_controller.cpp)
+    list(APPEND AUTOMPC_SOURCES src/controllers/mpc_controller.cpp)
 endif()
 
 add_library(autompc STATIC ${AUTOMPC_SOURCES})
@@ -79,6 +80,9 @@ if(BUILD_TESTS AND GTest_FOUND)
 
     add_mpc_test(test_controllers tests/test_controllers.cpp)
     add_mpc_test(autompc_test_edge_cases tests/test_edge_cases.cpp)
+    if(Eigen3_FOUND)
+        add_mpc_test(test_mpc tests/test_mpc.cpp)
+    endif()
 endif()
 
 # ── Install ─────────────────────────────────────────────────────────────
