@@ -36,6 +36,24 @@ TEST_F(SmoothingTest, ShortcutReducesPath) {
     EXPECT_DOUBLE_EQ(smoothed.back().y, path.back().y);
 }
 
+TEST_F(SmoothingTest, ShortcutIsDeterministic) {
+    GridCollisionChecker checker(map_);
+    ShortcutSmoother smoother(checker, 100);
+
+    std::vector<Point2d> path = {
+        {1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {4.0, 4.0}, {5.0, 5.0}
+    };
+
+    const auto first = smoother.smooth(path);
+    const auto second = smoother.smooth(path);
+
+    ASSERT_EQ(first.size(), second.size());
+    for (std::size_t i = 0; i < first.size(); ++i) {
+        EXPECT_DOUBLE_EQ(first[i].x, second[i].x);
+        EXPECT_DOUBLE_EQ(first[i].y, second[i].y);
+    }
+}
+
 TEST_F(SmoothingTest, ShortcutPreservesCollisionFree) {
     GridCollisionChecker checker(map_);
     ShortcutSmoother smoother(checker, 100);

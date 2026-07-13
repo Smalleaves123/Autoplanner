@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <queue>
-#include <unordered_set>
+#include <unordered_map>
 
 #include "autoplanner/heuristics/euclidean.h"
 

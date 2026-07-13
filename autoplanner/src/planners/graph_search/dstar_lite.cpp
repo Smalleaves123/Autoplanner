@@ -98,6 +98,12 @@ PlannerResult DStarLitePlanner::plan(const GridMap& map, const Point2i& start,
         for (size_t i = 0; i < dxs.size(); ++i) {
             int nx = ux + dxs[i], ny = uy + dys[i];
             if (!map.isFree(nx, ny)) continue;
+            // Diagonal moves must not cut corners — both adjacent cardinal cells
+            // must be free before a diagonal step is allowed.
+            if (dxs[i] != 0 && dys[i] != 0) {
+                if (!map.isFree(ux + dxs[i], uy) || !map.isFree(ux, uy + dys[i]))
+                    continue;
+            }
             int v = map.index(nx, ny);
             double c = (dxs[i] != 0 && dys[i] != 0) ? std::sqrt(2.0) : 1.0;
             double new_rhs = g[static_cast<size_t>(u)] + c;

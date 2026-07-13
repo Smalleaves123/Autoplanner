@@ -1,7 +1,5 @@
 #include "autoplanner/smoothing/shortcut_smoother.h"
 
-#include <random>
-
 namespace autoplanner {
 
 ShortcutSmoother::ShortcutSmoother(const CollisionChecker& checker, int max_iterations)
@@ -15,21 +13,31 @@ std::vector<Point2d> ShortcutSmoother::smooth(const std::vector<Point2d>& path) 
     if (path.size() < 3) return path;
 
     std::vector<Point2d> result = path;
-    std::mt19937 rng(std::random_device{}());
-    std::uniform_int_distribution<std::size_t> dist_idx(0, result.size() - 1);
 
     for (int iter = 0; iter < max_iterations_; ++iter) {
         if (result.size() < 3) break;
 
-        std::size_t i = dist_idx(rng) % (result.size() - 1);
-        std::size_t j = dist_idx(rng) % result.size();
-        if (i > j) std::swap(i, j);
-        if (j - i < 2) continue;
+        bool changed = false;
+        // Deterministic farthest-visible shortcut. This keeps benchmark
+        // results reproducible while removing redundant grid turns.
+        for (std::size_t i = 0; i + 2 < result.size(); ++i) {
+            std::size_t farthest = i + 1;
+            for (std::size_t j = result.size() - 1; j > i + 1; --j) {
+                if (checker_.isSegmentValid(result[i], result[j])) {
+                    farthest = j;
+                    break;
+                }
+            }
 
-        if (checker_.isSegmentValid(result[i], result[j])) {
-            result.erase(result.begin() + static_cast<long>(i) + 1,
-                         result.begin() + static_cast<long>(j));
+            if (farthest > i + 1) {
+                result.erase(result.begin() + static_cast<long>(i) + 1,
+                             result.begin() + static_cast<long>(farthest));
+                changed = true;
+                break;
+            }
         }
+
+        if (!changed) break;
     }
     return result;
 }

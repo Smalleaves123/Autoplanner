@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "autoplanner/collision/grid_collision_checker.h"
 #include "autoplanner/core/grid_map.h"
 #include "autoplanner/core/path.h"
 #include "autoplanner/planners/graph_search/astar.h"
@@ -15,6 +16,7 @@
 #include "autoplanner/planners/sampling/bi_rrt.h"
 #include "autoplanner/costmap/costmap_2d.h"
 #include "autoplanner/costmap/obstacle_inflation.h"
+#include "autoplanner/smoothing/shortcut_smoother.h"
 
 using namespace autoplanner;
 
@@ -25,6 +27,8 @@ int main(int argc, char** argv) {
     Point2i start{1, 1}, goal{48, 48};
     double weight = 1.5;
     double robot_radius = 1.0;
+    std::string smoother_name = "none";
+    int smoothing_iterations = 100;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -37,12 +41,17 @@ int main(int argc, char** argv) {
             goal = {std::stoi(argv[++i]), std::stoi(argv[++i])}; }
         else if (arg == "--weight" && i+1 < argc) weight = std::stod(argv[++i]);
         else if (arg == "--robot-radius" && i+1 < argc) robot_radius = std::stod(argv[++i]);
+        else if (arg == "--smooth" && i+1 < argc) smoother_name = argv[++i];
+        else if (arg == "--smooth-iterations" && i+1 < argc)
+            smoothing_iterations = std::stoi(argv[++i]);
         else if (arg == "--help") {
             std::cout << "AutoPlanner CLI\n"
                       << "  --planner <name>   astar|dijkstra|weighted_astar|improved_astar|jps|rrt|rrt_star|bi_rrt\n"
                       << "  --map <path>       grid map file\n"
                       << "  --start <x> <y>    start coordinates\n"
                       << "  --goal <x> <y>     goal coordinates\n"
+                      << "  --smooth <name>    none|shortcut (default: none)\n"
+                      << "  --smooth-iterations <n>  smoothing iterations\n"
                       << "  --output <dir>     output directory\n";
             return 0;
         }
@@ -81,6 +90,20 @@ int main(int argc, char** argv) {
               << ")  Goal: (" << goal.x << "," << goal.y << ")\n";
 
     auto result = planner->plan(map, start, goal);
+
+    if (result.success && smoother_name != "none") {
+        if (smoother_name != "shortcut") {
+            std::cerr << "Unknown smoother: " << smoother_name << "\n";
+            return 1;
+        }
+
+        GridCollisionChecker checker(map);
+        ShortcutSmoother smoother(checker, smoothing_iterations);
+        result.path = smoother.smooth(result.path);
+        result.path_length = computePathLength(result.path);
+        result.message = "Path found and smoothed.";
+    }
+
     std::cout << (result.success ? "SUCCESS" : "FAIL")
               << "  Time: " << result.planning_time_ms << " ms"
               << "  Length: " << result.path_length
