@@ -25,7 +25,7 @@ public:
     Control compute(const State& state, const TrajectoryPoint& ref);
 
 private:
-    Eigen::Matrix4d K_;  // feedback gain matrix
+    Eigen::Matrix<double, 2, 4> K_;  // feedback gain matrix
     double dt_;
     double wheelbase_;
 };

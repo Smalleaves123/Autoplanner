@@ -40,6 +40,7 @@ add_library(autoplanner STATIC
     src/costmap/costmap_2d.cpp
     src/costmap/obstacle_inflation.cpp
     src/costmap/distance_transform.cpp
+    src/costmap/obstacle_cost_layer.cpp
 
     # collision
     src/collision/grid_collision_checker.cpp
@@ -49,10 +50,12 @@ add_library(autoplanner STATIC
     src/smoothing/shortcut_smoother.cpp
     src/smoothing/bezier_smoother.cpp
     src/smoothing/bspline_smoother.cpp
+    src/smoothing/gradient_smoother.cpp
 
     # metrics
     src/metrics/path_metrics.cpp
     src/metrics/benchmark_metrics.cpp
+    src/metrics/planner_profiler.cpp
 
     # heuristics
     src/heuristics/euclidean.cpp
@@ -62,7 +65,16 @@ add_library(autoplanner STATIC
 
     # io
     src/io/config_loader.cpp
+    src/io/map_loader.cpp
     src/io/map_saver.cpp
+    src/io/path_writer.cpp
+    src/io/json_writer.cpp
+
+    # utilities
+    src/utils/logger.cpp
+    src/utils/math_utils.cpp
+    src/utils/random.cpp
+    src/utils/timer.cpp
 )
 
 target_include_directories(autoplanner PUBLIC
@@ -144,6 +156,12 @@ install(EXPORT autoplannerTargets
 option(BUILD_TESTS "Build unit tests" ON)
 
 if(BUILD_TESTS)
+    find_package(GTest QUIET)
+endif()
+
+if(BUILD_TESTS AND GTest_FOUND)
     enable_testing()
     add_subdirectory(tests)
+elseif(BUILD_TESTS)
+    message(WARNING "GoogleTest not found; AutoPlanner tests will not be built")
 endif()

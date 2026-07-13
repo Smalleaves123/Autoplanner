@@ -6,6 +6,10 @@ project(RobotNav VERSION 0.5.0 LANGUAGES CXX)
 # Disable tests in sub-projects with -DBUILD_TESTS=OFF if desired.
 option(BUILD_TESTS "Build unit tests for all sub-projects" ON)
 
+if(BUILD_TESTS)
+    enable_testing()
+endif()
+
 # Shared settings
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -1,5 +1,8 @@
 #include "autompc/controllers/lqr_controller.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include <Eigen/Dense>
 
 namespace autompc {
@@ -21,7 +24,9 @@ LQRController::LQRController(const Eigen::Vector4d& Q,
 
     // Solve discrete-time Riccati via eigenvalue decomposition of symplectic matrix
     // For small systems, iterate the Riccati equation to convergence
-    Eigen::Matrix4d P = Q.asDiagonal();
+    Eigen::Matrix4d Qmat = Eigen::Matrix4d::Zero();
+    Qmat.diagonal() = Q;
+    Eigen::Matrix4d P = Qmat;
     Eigen::Matrix2d Rmat = R.asDiagonal();
 
     for (int iter = 0; iter < 200; ++iter) {
@@ -29,7 +34,7 @@ LQRController::LQRController(const Eigen::Vector4d& Q,
         Eigen::Matrix2d S = Rmat + B.transpose() * P * B;
         Eigen::Matrix<double, 2, 4> K_new = S.llt().solve(B.transpose() * P * A);
         // P = Q + A'PA - A'PB K
-        Eigen::Matrix4d P_new = Q.asDiagonal() + A.transpose() * P * A
+        Eigen::Matrix4d P_new = Qmat + A.transpose() * P * A
                               - A.transpose() * P * B * K_new;
         if ((P_new - P).norm() < 1e-8) {
             K_ = -K_new;

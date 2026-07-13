@@ -65,7 +65,7 @@ set_target_properties(circle_tracking PROPERTIES
 
 # ── Tests ───────────────────────────────────────────────────────────────
 
-if(GTest_FOUND)
+if(BUILD_TESTS AND GTest_FOUND)
     enable_testing()
     function(add_mpc_test name source)
         add_executable(${name} ${source})
@@ -78,7 +78,7 @@ if(GTest_FOUND)
     endfunction()
 
     add_mpc_test(test_controllers tests/test_controllers.cpp)
-    add_mpc_test(test_edge_cases tests/test_edge_cases.cpp)
+    add_mpc_test(autompc_test_edge_cases tests/test_edge_cases.cpp)
 endif()
 
 # ── Install ─────────────────────────────────────────────────────────────
