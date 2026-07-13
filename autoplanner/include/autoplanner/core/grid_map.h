@@ -23,6 +23,9 @@ public:
     bool isFree(int x, int y) const;
     bool isOccupied(int x, int y) const;
 
+    // Update one cell, useful for dynamic-obstacle simulations.
+    bool setOccupied(int x, int y, bool occupied);
+
     int width() const;
     int height() const;
 

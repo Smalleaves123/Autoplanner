@@ -85,6 +85,12 @@ bool GridMap::isOccupied(int x, int y) const {
     return data_[static_cast<std::size_t>(index(x, y))] != 0;
 }
 
+bool GridMap::setOccupied(int x, int y, bool occupied) {
+    if (!isInside(x, y)) return false;
+    data_[static_cast<std::size_t>(index(x, y))] = occupied ? 1 : 0;
+    return true;
+}
+
 int GridMap::width() const {
     return width_;
 }

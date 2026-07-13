@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <fstream>
+
 #include "autoplanner/core/grid_map.h"
 #include "autoplanner/planners/graph_search/dstar_lite.h"
 #include "autoplanner/planners/graph_search/astar.h"
@@ -90,4 +92,33 @@ TEST(DStarLite, FourConnectedWorks) {
 
     EXPECT_TRUE(result.success);
     EXPECT_GT(result.path.size(), 0u);
+}
+
+TEST(DStarLite, ReplansAfterObstacleUpdate) {
+    std::ofstream file("/tmp/dstar_dynamic_map.txt");
+    for (int y = 0; y < 20; ++y) file << std::string(20, '0') << '\n';
+    file.close();
+
+    GridMap map;
+    ASSERT_TRUE(map.loadFromTxt("/tmp/dstar_dynamic_map.txt"));
+    DStarLitePlanner planner(true);
+    const Point2i start{1, 1};
+    const Point2i goal{18, 18};
+
+    const auto initial = planner.plan(map, start, goal);
+    ASSERT_TRUE(initial.success);
+    ASSERT_GT(initial.path.size(), 4u);
+
+    const Point2i blocked{
+        static_cast<int>(initial.path[initial.path.size() / 2].x),
+        static_cast<int>(initial.path[initial.path.size() / 2].y)};
+    ASSERT_TRUE(map.setOccupied(blocked.x, blocked.y, true));
+
+    const auto updated = planner.replan(map, start);
+    ASSERT_TRUE(updated.success);
+    EXPECT_GT(updated.expanded_nodes, 0);
+    for (const auto& point : updated.path) {
+        EXPECT_FALSE(static_cast<int>(point.x) == blocked.x &&
+                     static_cast<int>(point.y) == blocked.y);
+    }
 }

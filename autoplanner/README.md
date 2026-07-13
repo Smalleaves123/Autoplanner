@@ -179,6 +179,18 @@ collision validation:
 ./build/apps/compare_planners --map data/maps/warehouse_100x100.txt --start 1 1 --goal 98 98
 ```
 
+### Dynamic Replanning with D* Lite
+
+```bash
+./build/apps/dynamic_replanning \
+    --map data/maps/simple_50x50.txt \
+    --frames 5 \
+    --output results/dynamic_replanning.csv
+```
+
+The demo changes an occupied cell on the current route and reuses the D* Lite
+search state to repair the path.
+
 ### Run Benchmark
 
 ```bash

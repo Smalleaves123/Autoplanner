@@ -105,6 +105,7 @@ add_app(run_single_planner apps/run_single_planner.cpp)
 add_app(autoplanner_cli    apps/autoplanner_cli.cpp)
 add_app(compare_planners   apps/compare_planners.cpp)
 add_app(ablation_study     apps/ablation_study.cpp)
+add_app(dynamic_replanning apps/dynamic_replanning.cpp)
 
 # ── Examples ────────────────────────────────────────────────────────────
 
