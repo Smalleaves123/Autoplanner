@@ -31,3 +31,20 @@ TEST(MPCController, RecedingHorizonReducesLineError) {
 
     EXPECT_LT(std::abs(state.y), initial_error);
 }
+
+TEST(MPCController, EnforcesInputRateConstraints) {
+    MPCController mpc(10, 0.1, 1.0, 2.0, 0.7, 0.5, 0.75, 0.4);
+    const auto reference = makeStraightLine(0.0, 0.0, 30.0, 0.0, 2.0, 61);
+    State state{0.0, 1.0, 0.0, 0.0};
+    double previous_steering = 0.0;
+
+    for (int i = 0; i < 10; ++i) {
+        const auto control = mpc.compute(state, reference, 2.0);
+        EXPECT_LE(control.velocity, state.v + 0.5 * 0.1 + 1e-9);
+        EXPECT_GE(control.velocity, state.v - 0.75 * 0.1 - 1e-9);
+        EXPECT_LE(std::abs(control.steering - previous_steering),
+                  0.4 * 0.1 + 1e-9);
+        previous_steering = control.steering;
+        state = step(state, control, 0.1);
+    }
+}

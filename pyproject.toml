@@ -1,0 +1,37 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.10",
+    "pybind11>=2.12",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "robotnav"
+version = "0.6.0"
+description = "C++17 mobile robot navigation and finite-horizon MPC backends"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "RobotNav contributors"}]
+classifiers = [
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+wheel.packages = [
+    "autoplanner/python/autoplanner",
+    "autompc/python/autompc",
+]
+sdist.include = [
+    "autoplanner/python/**",
+    "autompc/python/**",
+]
+
+[tool.scikit-build.cmake]
+build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+BUILD_TESTS = "OFF"
+BUILD_PYTHON_BINDINGS = "ON"

@@ -52,6 +52,9 @@ MPCController::MPCController(int horizon,
                              double wheelbase,
                              double max_velocity,
                              double max_steering,
+                             double max_acceleration,
+                             double max_deceleration,
+                             double max_steering_rate,
                              const Eigen::Vector4d& state_weights,
                              const Eigen::Vector2d& input_weights)
     : horizon_(std::max(1, horizon))
@@ -59,8 +62,15 @@ MPCController::MPCController(int horizon,
     , wheelbase_(std::max(1e-4, wheelbase))
     , max_velocity_(std::max(0.0, max_velocity))
     , max_steering_(std::max(0.0, max_steering))
+    , max_acceleration_(std::max(0.0, max_acceleration))
+    , max_deceleration_(std::max(0.0, max_deceleration))
+    , max_steering_rate_(std::max(0.0, max_steering_rate))
     , state_weights_(state_weights)
     , input_weights_(input_weights) {}
+
+void MPCController::reset() {
+    last_steering_ = 0.0;
+}
 
 Control MPCController::compute(const State& state,
                                const Trajectory& reference,
@@ -136,11 +146,27 @@ Control MPCController::compute(const State& state,
     const double nominal_velocity = ref.v > 0.0 ? ref.v : fallback_velocity;
     const double nominal_steering = referenceSteering(
         reference, nearest, wheelbase_);
+
+    const double speed_lower = std::max(
+        0.0, std::min(max_velocity_,
+                      state.v - max_deceleration_ * dt_));
+    const double speed_upper = std::min(
+        max_velocity_, std::max(speed_lower,
+                                 state.v + max_acceleration_ * dt_));
+    const double steering_center = std::clamp(
+        last_steering_, -max_steering_, max_steering_);
+    const double steering_delta = max_steering_rate_ * dt_;
+    const double steering_lower = std::max(
+        -max_steering_, steering_center - steering_delta);
+    const double steering_upper = std::min(
+        max_steering_, steering_center + steering_delta);
+
     Control control;
     control.velocity = std::clamp(
-        nominal_velocity + correction(0), 0.0, max_velocity_);
+        nominal_velocity + correction(0), speed_lower, speed_upper);
     control.steering = std::clamp(
-        nominal_steering + correction(1), -max_steering_, max_steering_);
+        nominal_steering + correction(1), steering_lower, steering_upper);
+    last_steering_ = control.steering;
     return control;
 }
 

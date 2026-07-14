@@ -66,15 +66,20 @@ PYBIND11_MODULE(_autompc, m) {
 
     py::class_<MPCController>(m, "MPCController")
         .def(py::init<int, double, double, double, double,
+                      double, double, double,
                       const Eigen::Vector4d&, const Eigen::Vector2d&>(),
              py::arg("horizon") = 15,
              py::arg("dt") = 0.05,
              py::arg("wheelbase") = 1.0,
              py::arg("max_velocity") = 2.0,
              py::arg("max_steering") = 0.7,
+             py::arg("max_acceleration") = 1.5,
+             py::arg("max_deceleration") = 2.0,
+             py::arg("max_steering_rate") = 1.5,
              py::arg("state_weights") = Eigen::Vector4d(10, 10, 5, 1),
              py::arg("input_weights") = Eigen::Vector2d(0.1, 0.1))
         .def("compute", &MPCController::compute)
+        .def("reset", &MPCController::reset)
         .def("horizon", &MPCController::horizon);
 
     m.def("step", &step);

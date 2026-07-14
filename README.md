@@ -23,6 +23,12 @@ cmake --build build -j
 ./build/autompc/examples/circle_tracking
 ```
 
+To build/install the Python package:
+
+```bash
+python3 -m pip install -e .
+```
+
 ## Python Experiment Workflow
 
 Python is used for experiment orchestration and analysis; the planning and

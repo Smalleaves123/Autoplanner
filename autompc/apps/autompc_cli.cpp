@@ -57,6 +57,9 @@ int main(int argc, char** argv) {
     int mpc_horizon = 15;
     double max_velocity = 2.0;
     double max_steering = 0.7;
+    double max_acceleration = 1.5;
+    double max_deceleration = 2.0;
+    double max_steering_rate = 1.5;
     std::string output = "results/tracking.csv";
     std::string path_file;
     std::string metrics_output;
@@ -76,6 +79,12 @@ int main(int argc, char** argv) {
             max_velocity = std::stod(argv[++i]);
         else if (a == "--max-steering" && i+1 < argc)
             max_steering = std::stod(argv[++i]);
+        else if (a == "--max-acceleration" && i+1 < argc)
+            max_acceleration = std::stod(argv[++i]);
+        else if (a == "--max-deceleration" && i+1 < argc)
+            max_deceleration = std::stod(argv[++i]);
+        else if (a == "--max-steering-rate" && i+1 < argc)
+            max_steering_rate = std::stod(argv[++i]);
         else if (a == "--output" && i+1 < argc) output = argv[++i];
         else if (a == "--metrics" && i+1 < argc) metrics_output = argv[++i];
         else if (a == "--help") {
@@ -90,6 +99,9 @@ int main(int argc, char** argv) {
                 << "  --mpc-horizon N  MPC prediction horizon (default 15)\n"
                 << "  --max-velocity N  MPC velocity constraint\n"
                 << "  --max-steering N  MPC steering constraint\n"
+                << "  --max-acceleration N  MPC acceleration constraint\n"
+                << "  --max-deceleration N  MPC deceleration constraint\n"
+                << "  --max-steering-rate N  MPC steering rate constraint\n"
                 << "  --output PATH CSV output path\n"
                 << "  --metrics PATH JSON metrics output (optional)\n";
             return 0;
@@ -149,7 +161,9 @@ int main(int argc, char** argv) {
 #ifdef AUTOMPC_HAS_EIGEN
         State s = initial;
         MPCController mpc(mpc_horizon, dt, wheelbase,
-                          max_velocity, max_steering);
+                          max_velocity, max_steering,
+                          max_acceleration, max_deceleration,
+                          max_steering_rate);
         for (int i = 0; i < steps; ++i) {
             const auto u = mpc.compute(s, ref, velocity);
             s = step(s, u, dt);

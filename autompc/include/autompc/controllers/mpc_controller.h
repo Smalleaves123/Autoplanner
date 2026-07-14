@@ -19,6 +19,9 @@ public:
                   double wheelbase = 1.0,
                   double max_velocity = 2.0,
                   double max_steering = 0.7,
+                  double max_acceleration = 1.5,
+                  double max_deceleration = 2.0,
+                  double max_steering_rate = 1.5,
                   const Eigen::Vector4d& state_weights =
                       Eigen::Vector4d(10.0, 10.0, 5.0, 1.0),
                   const Eigen::Vector2d& input_weights =
@@ -29,6 +32,9 @@ public:
                     const Trajectory& reference,
                     double target_velocity);
 
+    // Clear the previous steering command used by the rate constraint.
+    void reset();
+
     int horizon() const { return horizon_; }
 
 private:
@@ -37,6 +43,10 @@ private:
     double wheelbase_;
     double max_velocity_;
     double max_steering_;
+    double max_acceleration_;
+    double max_deceleration_;
+    double max_steering_rate_;
+    double last_steering_ = 0.0;
     Eigen::Vector4d state_weights_;
     Eigen::Vector2d input_weights_;
 };

@@ -61,6 +61,9 @@ def main() -> int:
     parser.add_argument("--mpc-horizon", type=int, default=15)
     parser.add_argument("--max-velocity", type=float, default=2.0)
     parser.add_argument("--max-steering", type=float, default=0.7)
+    parser.add_argument("--max-acceleration", type=float, default=1.5)
+    parser.add_argument("--max-deceleration", type=float, default=2.0)
+    parser.add_argument("--max-steering-rate", type=float, default=1.5)
     parser.add_argument("--start", nargs=2, type=int, default=(1, 1))
     parser.add_argument("--goal", nargs=2, type=int, default=(48, 48))
     parser.add_argument("--velocity", type=float, default=1.0)
@@ -146,7 +149,10 @@ def main() -> int:
     if args.controller == "mpc":
         tracker_cmd += ["--mpc-horizon", str(args.mpc_horizon),
                         "--max-velocity", str(args.max_velocity),
-                        "--max-steering", str(args.max_steering)]
+                        "--max-steering", str(args.max_steering),
+                        "--max-acceleration", str(args.max_acceleration),
+                        "--max-deceleration", str(args.max_deceleration),
+                        "--max-steering-rate", str(args.max_steering_rate)]
 
     print(f"[2/2] Tracking {total_length:.2f} m with {steps} steps...")
     tracking = subprocess.run(tracker_cmd, text=True)

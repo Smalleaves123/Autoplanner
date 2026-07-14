@@ -105,6 +105,18 @@ control = controller.compute(
     autompc.State(0, 1, 0, 0), reference, 1.0)
 ```
 
+MPC input and rate constraints can be configured from Python:
+
+```python
+controller = autompc.MPCController(
+    horizon=15,
+    max_velocity=2.0,
+    max_acceleration=1.5,
+    max_deceleration=2.0,
+    max_steering_rate=1.5,
+)
+```
+
 The CLI also accepts an AutoPlanner waypoint CSV directly:
 
 ```bash

@@ -28,10 +28,15 @@ configure_file(
     COPYONLY
 )
 
+if(DEFINED SKBUILD_PROJECT_NAME)
+    set(PYTHON_INSTALL_DIR "autoplanner")
+else()
+    set(PYTHON_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/python/autoplanner")
+endif()
 install(TARGETS _autoplanner
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/autoplanner
-    RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/autoplanner
+    LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}
+    RUNTIME DESTINATION ${PYTHON_INSTALL_DIR}
 )
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../autoplanner/__init__.py"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/autoplanner
+    DESTINATION ${PYTHON_INSTALL_DIR}
 )
