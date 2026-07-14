@@ -5,6 +5,7 @@ project(RobotNav VERSION 0.5.0 LANGUAGES CXX)
 # Build both sub-projects.
 # Disable tests in sub-projects with -DBUILD_TESTS=OFF if desired.
 option(BUILD_TESTS "Build unit tests for all sub-projects" ON)
+option(BUILD_PYTHON_BINDINGS "Build pybind11 Python extension modules" OFF)
 
 if(BUILD_TESTS)
     enable_testing()

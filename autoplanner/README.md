@@ -233,6 +233,21 @@ ctest --test-dir build --output-on-failure
 
 ## Visualization (Python)
 
+### Native Python Binding
+
+Build the optional pybind11 module from the repository root:
+
+```bash
+cmake -S . -B build-python -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTS=OFF -DBUILD_PYTHON_BINDINGS=ON
+cmake --build build-python -j
+PYTHONPATH=build-python/python python3 -c \
+  "import autoplanner; print(autoplanner.__doc__)"
+```
+
+Use `autoplanner.plan(...)` for a high-level call, or
+`autoplanner.create_planner(...)` to reuse a configured C++ planner object.
+
 ```bash
 # Visualize a planned path
 python scripts/visualize_path.py \

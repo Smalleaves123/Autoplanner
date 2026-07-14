@@ -163,6 +163,10 @@ if(BUILD_TESTS)
     find_package(GTest QUIET)
 endif()
 
+if(BUILD_PYTHON_BINDINGS)
+    add_subdirectory(python/bindings)
+endif()
+
 if(BUILD_TESTS AND GTest_FOUND)
     enable_testing()
     add_subdirectory(tests)

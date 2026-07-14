@@ -94,6 +94,17 @@ AutoPlanner (path planning) → Trajectory → AutoMPC (tracking) → Control co
 
 Use AutoPlanner's path output as AutoMPC's reference trajectory input.
 
+AutoMPC also exposes the C++ controllers to Python when Eigen3 is available:
+
+```python
+import autompc
+
+reference = autompc.make_straight_line(0, 0, 20, 0, 1.0, 41)
+controller = autompc.MPCController(horizon=15)
+control = controller.compute(
+    autompc.State(0, 1, 0, 0), reference, 1.0)
+```
+
 The CLI also accepts an AutoPlanner waypoint CSV directly:
 
 ```bash

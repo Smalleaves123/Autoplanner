@@ -13,6 +13,7 @@ class Costmap2D;
 // Python experiment tools. Unused fields are ignored by a given planner.
 struct PlannerFactoryOptions {
     bool allow_diagonal = true;
+    double robot_radius = 0.0;
 
     double heuristic_weight = 1.0;
     double weighted_astar_weight = 1.5;

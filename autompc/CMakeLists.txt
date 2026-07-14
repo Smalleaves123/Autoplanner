@@ -85,6 +85,10 @@ if(BUILD_TESTS AND GTest_FOUND)
     endif()
 endif()
 
+if(BUILD_PYTHON_BINDINGS AND Eigen3_FOUND)
+    add_subdirectory(python/bindings)
+endif()
+
 # ── Install ─────────────────────────────────────────────────────────────
 
 include(GNUInstallDirs)

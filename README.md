@@ -66,6 +66,29 @@ without changing the C++ benchmark code.
 The navigation pipeline applies collision-safe shortcut smoothing by default;
 pass `--smooth none` when the raw planner path is required.
 
+## Python C++ Backend
+
+Python bindings are optional. Python handles orchestration and analysis while
+the planning and MPC kernels execute in C++ with the GIL released:
+
+```bash
+cmake -S . -B build-python -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTS=OFF -DBUILD_PYTHON_BINDINGS=ON
+cmake --build build-python -j
+
+PYTHONPATH=build-python/python python3 - <<'PY'
+import autoplanner
+import autompc
+
+grid = autoplanner.GridMap()
+grid.load_from_txt("autoplanner/data/maps/simple_50x50.txt")
+result = autoplanner.plan(
+    "astar", grid,
+    autoplanner.Point2i(1, 1), autoplanner.Point2i(48, 48))
+print(result.success, result.path_length)
+PY
+```
+
 ## Test
 
 ```bash
