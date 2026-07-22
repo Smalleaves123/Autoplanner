@@ -37,6 +37,7 @@ add_subdirectory(autoplanner)
 add_subdirectory(autompc)
 
 add_library(robotnav_pipeline STATIC
+    src/dynamic_navigation_pipeline.cpp
     src/navigation_pipeline.cpp
     src/navigation_trace.cpp
     src/safety_supervisor.cpp
@@ -63,6 +64,13 @@ set_target_properties(dynamic_navigation PROPERTIES
 add_executable(navigation_pipeline_cli apps/navigation_pipeline_cli.cpp)
 target_link_libraries(navigation_pipeline_cli PRIVATE robotnav_pipeline)
 set_target_properties(navigation_pipeline_cli PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps
+)
+
+add_executable(dynamic_navigation_pipeline_cli
+    apps/dynamic_navigation_pipeline_cli.cpp)
+target_link_libraries(dynamic_navigation_pipeline_cli PRIVATE robotnav_pipeline)
+set_target_properties(dynamic_navigation_pipeline_cli PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps
 )
 

@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "autoplanner/core/grid_map.h"
+#include "robotnav/dynamic_navigation_pipeline.h"
 #include "robotnav/navigation_pipeline.h"
 #include "robotnav/navigation_trace.h"
 #include "robotnav/safety_supervisor.h"
@@ -76,6 +77,32 @@ TEST(NavigationPipelineTest, SupportsRectangleFootprintAndSmoothing) {
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_EQ(result.metrics.footprint, "rectangle");
     EXPECT_EQ(result.metrics.smoother, "shortcut");
+}
+
+TEST(DynamicNavigationPipelineTest, ReplansAndReachesGoalWithoutCollision) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.smoother = "shortcut";
+    config.pipeline.max_steps = 1000;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.obstacle_insertion_ahead = 15;
+    config.auto_obstacle_margin_cells = 1;
+    config.max_auto_obstacles = 1;
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+    EXPECT_EQ(result.metrics.collision_steps, 0u);
+    EXPECT_GE(result.metrics.replanning_count, 1u);
+    EXPECT_EQ(result.metrics.steps, result.trace.size());
+    EXPECT_FALSE(result.final_path.empty());
 }
 
 TEST(ScenarioConfigTest, LoadsPipelineValues) {

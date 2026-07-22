@@ -212,3 +212,24 @@ python3 autoplanner/scripts/run_navigation_pipeline.py \
     --planner astar --controller stanley \
     --smooth none
 ```
+
+### Dynamic replanning
+
+The dynamic pipeline adds automatic obstacle updates, D* Lite incremental
+replanning, optional A* timing comparison, controller reset/reference
+continuation, safety supervision, and `trace.csv`/`metrics.json` artifacts.
+It is also ROS-free. A compact local smoke scenario is:
+
+```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 \
+    --controller stanley --frames 20 --steps-per-frame 40 \
+    --obstacle-ahead 15 --obstacle-margin 1 --max-auto-obstacles 1 \
+    --output-dir /tmp/robotnav-dynamic
+```
+
+The expected report has `status_code: "success"`,
+`replanning_count >= 1`, `goal_reached: true`, and `safe_stop: false`.
+Automatic obstacles use a conservative safety envelope and a reachability
+check so the demonstration does not intentionally create an unsolvable map.
