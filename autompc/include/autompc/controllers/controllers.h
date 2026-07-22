@@ -23,7 +23,6 @@ public:
 private:
     double kp_vel_, ki_vel_, kd_vel_;
     double kp_steer_, ki_steer_, kd_steer_;
-    double wheelbase_;
     double prev_vel_err_ = 0.0, prev_steer_err_ = 0.0;
     double integral_vel_ = 0.0, integral_steer_ = 0.0;
 };
@@ -54,7 +53,6 @@ public:
 
 private:
     double k_;
-    double wheelbase_;
 };
 
 }  // namespace autompc

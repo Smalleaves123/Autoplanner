@@ -7,6 +7,8 @@
 #include "autompc/controllers/controllers.h"
 #include "autompc/trajectory/trajectory_tracker.h"
 #include "autompc/trajectory/error_metrics.h"
+#include "autompc/trajectory/trajectory_generator.h"
+#include "autompc/simulation/kinematic_bicycle.h"
 
 #ifdef AUTOMPC_HAS_EIGEN
 #include "autompc/controllers/lqr_controller.h"

@@ -12,10 +12,9 @@ namespace autompc {
 
 PIDController::PIDController(double kp_vel, double ki_vel, double kd_vel,
                              double kp_steer, double ki_steer, double kd_steer,
-                             double wheelbase)
+                             double /*wheelbase*/)
     : kp_vel_(kp_vel), ki_vel_(ki_vel), kd_vel_(kd_vel)
-    , kp_steer_(kp_steer), ki_steer_(ki_steer), kd_steer_(kd_steer)
-    , wheelbase_(wheelbase) {}
+    , kp_steer_(kp_steer), ki_steer_(ki_steer), kd_steer_(kd_steer) {}
 
 Control PIDController::compute(const State& state, const TrajectoryPoint& ref,
                                 double dt) {
@@ -117,8 +116,8 @@ Control PurePursuitController::compute(const State& state,
 
 // ── Stanley Controller ──────────────────────────────────────────────────
 
-StanleyController::StanleyController(double k, double wheelbase)
-    : k_(k), wheelbase_(wheelbase) {}
+StanleyController::StanleyController(double k, double /*wheelbase*/)
+    : k_(k) {}
 
 Control StanleyController::compute(const State& state,
                                     const TrajectoryPoint& ref,

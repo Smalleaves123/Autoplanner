@@ -3,6 +3,7 @@
 #include <vector>
 #include "autompc/core/types.h"
 #include "autompc/controllers/controllers.h"
+#include "autompc/simulation/kinematic_bicycle.h"
 
 namespace autompc {
 
@@ -11,5 +12,11 @@ std::vector<State> simulate(const State& initial,
                              const Trajectory& reference,
                              PIDController& controller,
                              double dt, double max_time);
+
+std::vector<State> simulate(const State& initial,
+                             const Trajectory& reference,
+                             PIDController& controller,
+                             const SimulationOptions& options,
+                             double max_time);
 
 }  // namespace autompc

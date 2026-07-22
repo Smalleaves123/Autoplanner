@@ -24,9 +24,13 @@ struct TrajectoryPoint {
     double y = 0.0;
     double theta = 0.0;
     double v = 0.0;
+    double curvature = 0.0;
+    double acceleration = 0.0;
 };
 
-// Unicycle kinematics step.
+// Legacy instantaneous kinematics step. It is retained for API compatibility;
+// controller execution should use KinematicBicycleSimulator when actuator
+// limits and persistent steering state are required.
 inline State step(const State& s, const Control& u, double dt) {
     State next = s;
     next.x += s.v * std::cos(s.theta) * dt;

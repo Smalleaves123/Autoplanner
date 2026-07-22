@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace autompc {
@@ -13,10 +14,12 @@ double wrapAngle(double angle) {
     return std::atan2(std::sin(angle), std::cos(angle));
 }
 
-std::size_t closestIndex(const Trajectory& trajectory, const State& state) {
-    std::size_t best = 0;
+std::size_t closestIndex(const Trajectory& trajectory, const State& state,
+                         std::size_t first_index) {
+    const std::size_t start = std::min(first_index, trajectory.size() - 1);
+    std::size_t best = start;
     double best_distance = std::numeric_limits<double>::max();
-    for (std::size_t i = 0; i < trajectory.size(); ++i) {
+    for (std::size_t i = start; i < trajectory.size(); ++i) {
         const double dx = trajectory[i].x - state.x;
         const double dy = trajectory[i].y - state.y;
         const double distance = dx * dx + dy * dy;
@@ -45,6 +48,20 @@ double referenceSteering(const Trajectory& trajectory,
     return std::atan(wheelbase * dtheta / ds);
 }
 
+void validateWeights(const Eigen::Vector4d& state_weights,
+                     const Eigen::Vector2d& input_weights,
+                     const Eigen::Vector4d& terminal_state_weights) {
+    if (!state_weights.allFinite() || !input_weights.allFinite() ||
+        !terminal_state_weights.allFinite() ||
+        (state_weights.array() < 0.0).any() ||
+        (terminal_state_weights.array() < 0.0).any() ||
+        (input_weights.array() <= 0.0).any()) {
+        throw std::invalid_argument(
+            "MPC weights must be finite, state weights non-negative, "
+            "and input weights positive");
+    }
+}
+
 }  // namespace
 
 MPCController::MPCController(int horizon,
@@ -56,7 +73,11 @@ MPCController::MPCController(int horizon,
                              double max_deceleration,
                              double max_steering_rate,
                              const Eigen::Vector4d& state_weights,
-                             const Eigen::Vector2d& input_weights)
+                             const Eigen::Vector2d& input_weights,
+                             const Eigen::Vector4d& terminal_state_weights,
+                             double steering_rate_weight,
+                             double max_position_error,
+                             double max_heading_error)
     : horizon_(std::max(1, horizon))
     , dt_(std::max(1e-4, dt))
     , wheelbase_(std::max(1e-4, wheelbase))
@@ -66,10 +87,21 @@ MPCController::MPCController(int horizon,
     , max_deceleration_(std::max(0.0, max_deceleration))
     , max_steering_rate_(std::max(0.0, max_steering_rate))
     , state_weights_(state_weights)
-    , input_weights_(input_weights) {}
+    , input_weights_(input_weights)
+    , terminal_state_weights_(terminal_state_weights)
+    , steering_rate_weight_(std::max(0.0, steering_rate_weight))
+    , max_position_error_(std::max(0.0, max_position_error))
+    , max_heading_error_(std::max(0.0, max_heading_error)) {
+    validateWeights(state_weights_, input_weights_, terminal_state_weights_);
+}
 
 void MPCController::reset() {
     last_steering_ = 0.0;
+    resetReferenceProgress();
+}
+
+void MPCController::resetReferenceProgress() {
+    last_reference_index_ = 0;
 }
 
 Control MPCController::compute(const State& state,
@@ -77,7 +109,12 @@ Control MPCController::compute(const State& state,
                                double target_velocity) {
     if (reference.empty()) return {};
 
-    const std::size_t nearest = closestIndex(reference, state);
+    if (last_reference_index_ >= reference.size()) {
+        last_reference_index_ = 0;
+    }
+    const std::size_t nearest = closestIndex(
+        reference, state, last_reference_index_);
+    last_reference_index_ = nearest;
     const double fallback_velocity = std::max(0.0, target_velocity);
 
     std::vector<Eigen::Matrix4d> a_matrices;
@@ -119,7 +156,7 @@ Control MPCController::compute(const State& state,
     Q.diagonal() = state_weights_;
     Eigen::Matrix2d R = Eigen::Matrix2d::Zero();
     R.diagonal() = input_weights_;
-    Eigen::Matrix4d P = 2.0 * Q;
+    Eigen::Matrix4d P = terminal_state_weights_.asDiagonal();
 
     std::vector<Eigen::Matrix<double, 2, 4>> gains(
         static_cast<std::size_t>(horizon_));
@@ -135,17 +172,22 @@ Control MPCController::compute(const State& state,
     }
 
     const auto& ref = reference[nearest];
-    const Eigen::Vector4d error(
+    Eigen::Vector4d error(
         state.x - ref.x,
         state.y - ref.y,
         wrapAngle(state.theta - ref.theta),
         state.v - (ref.v > 0.0 ? ref.v : fallback_velocity));
+    error(0) = std::clamp(error(0), -max_position_error_, max_position_error_);
+    error(1) = std::clamp(error(1), -max_position_error_, max_position_error_);
+    error(2) = std::clamp(error(2), -max_heading_error_, max_heading_error_);
     const Eigen::Vector2d correction =
         -gains.front() * error;
 
     const double nominal_velocity = ref.v > 0.0 ? ref.v : fallback_velocity;
     const double nominal_steering = referenceSteering(
         reference, nearest, wheelbase_);
+    const double steering_rate_regularization = steering_rate_weight_ *
+        (nominal_steering - last_steering_);
 
     const double speed_lower = std::max(
         0.0, std::min(max_velocity_,
@@ -165,7 +207,8 @@ Control MPCController::compute(const State& state,
     control.velocity = std::clamp(
         nominal_velocity + correction(0), speed_lower, speed_upper);
     control.steering = std::clamp(
-        nominal_steering + correction(1), steering_lower, steering_upper);
+        nominal_steering + correction(1) - steering_rate_regularization,
+        steering_lower, steering_upper);
     last_steering_ = control.steering;
     return control;
 }

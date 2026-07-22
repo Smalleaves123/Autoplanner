@@ -10,7 +10,7 @@ namespace autompc {
 LQRController::LQRController(const Eigen::Vector4d& Q,
                              const Eigen::Vector2d& R,
                              double dt, double wheelbase)
-    : dt_(dt), wheelbase_(wheelbase) {
+    : wheelbase_(wheelbase) {
     // Discrete-time LQR: compute feedback gain K via DARE
     // A = I + dt * A_continuous (linearized unicycle)
     Eigen::Matrix4d A = Eigen::Matrix4d::Identity();

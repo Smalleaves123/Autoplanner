@@ -48,3 +48,47 @@ TEST(MPCController, EnforcesInputRateConstraints) {
         state = step(state, control, 0.1);
     }
 }
+
+TEST(MPCController, RemainsFiniteAcrossSpeedsAndCurvature) {
+    for (double speed : {0.5, 1.0, 2.0}) {
+        MPCController mpc(15, 0.05, 1.0, 2.0, 0.7, 1.5, 2.0, 1.5,
+                          Eigen::Vector4d(10, 10, 5, 1),
+                          Eigen::Vector2d(0.1, 0.1),
+                          Eigen::Vector4d(20, 20, 10, 2), 0.5, 5.0, 2.5);
+        const auto reference = makeCircle(8.0, speed, 160);
+        State state{8.0, 0.5, M_PI_2, 0.0};
+        for (int i = 0; i < 80; ++i) {
+            const auto control = mpc.compute(state, reference, speed);
+            EXPECT_TRUE(std::isfinite(control.velocity));
+            EXPECT_TRUE(std::isfinite(control.steering));
+            EXPECT_GE(control.velocity, 0.0);
+            EXPECT_LE(control.velocity, 2.0 + 1e-9);
+            EXPECT_LE(std::abs(control.steering), 0.7 + 1e-9);
+            state = step(state, control, 0.05);
+        }
+    }
+}
+
+TEST(MPCController, ReferenceProgressDoesNotMoveBackwards) {
+    MPCController mpc;
+    const auto reference = makeStraightLine(0.0, 0.0, 20.0, 0.0, 1.0, 81);
+
+    mpc.compute(State{8.0, 0.0, 0.0, 1.0}, reference, 1.0);
+    const auto forward_index = mpc.referenceIndex();
+    mpc.compute(State{1.0, 0.0, 0.0, 1.0}, reference, 1.0);
+
+    EXPECT_GE(mpc.referenceIndex(), forward_index);
+}
+
+TEST(MPCController, RejectsInvalidWeights) {
+    EXPECT_THROW(
+        MPCController(15, 0.05, 1.0, 2.0, 0.7, 1.5, 2.0, 1.5,
+                      Eigen::Vector4d::Ones(),
+                      Eigen::Vector2d(0.0, 0.1)),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        MPCController(15, 0.05, 1.0, 2.0, 0.7, 1.5, 2.0, 1.5,
+                      Eigen::Vector4d(10.0, 10.0, -1.0, 1.0)),
+        std::invalid_argument);
+}

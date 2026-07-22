@@ -26,7 +26,6 @@ public:
 
 private:
     Eigen::Matrix<double, 2, 4> K_;  // feedback gain matrix
-    double dt_;
     double wheelbase_;
 };
 

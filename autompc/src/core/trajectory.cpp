@@ -2,9 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <fstream>
 #include <limits>
-#include <sstream>
 
 namespace autompc {
 
@@ -27,6 +25,7 @@ TrajectoryPoint interpolate(const Trajectory& traj, double s) {
         double dx = traj[i].x - traj[i - 1].x;
         double dy = traj[i].y - traj[i - 1].y;
         double seg_len = std::sqrt(dx * dx + dy * dy);
+        if (seg_len < 1e-12) continue;
         if (accumulated + seg_len >= s) {
             double t = (s - accumulated) / seg_len;
             TrajectoryPoint p;
@@ -80,71 +79,6 @@ Trajectory makeStraightLine(double x0, double y0, double x1, double y1,
         traj.push_back(p);
     }
     return traj;
-}
-
-bool loadPathCsv(const std::string& file_path, double velocity,
-                 Trajectory& trajectory) {
-    trajectory.clear();
-
-    std::ifstream fin(file_path);
-    if (!fin.is_open()) return false;
-
-    std::string line;
-    std::vector<TrajectoryPoint> raw;
-    while (std::getline(fin, line)) {
-        if (line.empty() || line == "x,y") continue;
-
-        std::stringstream ss(line);
-        std::string x_text;
-        std::string y_text;
-        if (!std::getline(ss, x_text, ',') || !std::getline(ss, y_text)) {
-            trajectory.clear();
-            return false;
-        }
-
-        try {
-            raw.push_back({std::stod(x_text), std::stod(y_text),
-                           0.0, velocity});
-        } catch (...) {
-            trajectory.clear();
-            return false;
-        }
-    }
-
-    if (raw.empty()) return false;
-
-    // Controllers need enough reference samples to identify both straight
-    // segments and turns. Resample the planner polyline at a fixed spatial
-    // interval instead of exposing sparse shortcut waypoints directly.
-    constexpr double kSampleSpacing = 0.5;
-    trajectory.push_back(raw.front());
-    for (std::size_t i = 1; i < raw.size(); ++i) {
-        const double x0 = raw[i - 1].x;
-        const double y0 = raw[i - 1].y;
-        const double dx = raw[i].x - x0;
-        const double dy = raw[i].y - y0;
-        const double length = std::sqrt(dx * dx + dy * dy);
-        const int samples = std::max(1, static_cast<int>(
-            std::ceil(length / kSampleSpacing)));
-
-        for (int sample = 1; sample <= samples; ++sample) {
-            const double t = static_cast<double>(sample) /
-                             static_cast<double>(samples);
-            trajectory.push_back({x0 + t * dx, y0 + t * dy,
-                                  0.0, velocity});
-        }
-    }
-
-    for (std::size_t i = 0; i + 1 < trajectory.size(); ++i) {
-        const double dx = trajectory[i + 1].x - trajectory[i].x;
-        const double dy = trajectory[i + 1].y - trajectory[i].y;
-        trajectory[i].theta = std::atan2(dy, dx);
-    }
-    if (trajectory.size() > 1) {
-        trajectory.back().theta = trajectory[trajectory.size() - 2].theta;
-    }
-
-    return true;
 }
 
 }  // namespace autompc

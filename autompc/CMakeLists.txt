@@ -28,6 +28,8 @@ set(AUTOMPC_SOURCES
     src/controllers/pid_controller.cpp
     src/trajectory/trajectory_tracker.cpp
     src/trajectory/error_metrics.cpp
+    src/trajectory/trajectory_generator.cpp
+    src/simulation/kinematic_bicycle.cpp
 )
 
 if(Eigen3_FOUND)
@@ -44,6 +46,7 @@ target_include_directories(autompc PUBLIC
 
 if(Eigen3_FOUND)
     target_link_libraries(autompc PUBLIC Eigen3::Eigen)
+    target_compile_definitions(autompc PUBLIC AUTOMPC_HAS_EIGEN)
 endif()
 
 target_compile_options(autompc PRIVATE -Wall -Wextra -Wpedantic)
@@ -72,14 +75,27 @@ if(BUILD_TESTS AND GTest_FOUND)
         add_executable(${name} ${source})
         target_link_libraries(${name} PRIVATE autompc GTest::GTest GTest::Main)
         target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-        set_target_properties(${name} PROPERTIES BUILD_RPATH "/opt/anaconda3/lib")
+        set(gtest_runtime_target "")
+        if(TARGET GTest::gtest_main)
+            set(gtest_runtime_target "GTest::gtest_main")
+        elseif(TARGET GTest::Main)
+            get_target_property(gtest_main_type GTest::Main TYPE)
+            if(NOT gtest_main_type STREQUAL "INTERFACE_LIBRARY")
+                set(gtest_runtime_target "GTest::Main")
+            endif()
+        endif()
+        if(gtest_runtime_target)
+            # Keep the test binary relocatable while allowing package-managed
+            # shared GTest libraries to be found on macOS and Linux.
+            set_property(TARGET ${name} APPEND PROPERTY BUILD_RPATH
+                         "$<TARGET_FILE_DIR:${gtest_runtime_target}>")
+        endif()
         add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-        set_tests_properties(${name} PROPERTIES
-            ENVIRONMENT "DYLD_LIBRARY_PATH=/opt/anaconda3/lib")
     endfunction()
 
     add_mpc_test(test_controllers tests/test_controllers.cpp)
     add_mpc_test(autompc_test_edge_cases tests/test_edge_cases.cpp)
+    add_mpc_test(test_simulation tests/test_simulation.cpp)
     if(Eigen3_FOUND)
         add_mpc_test(test_mpc tests/test_mpc.cpp)
     endif()

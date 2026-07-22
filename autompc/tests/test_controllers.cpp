@@ -47,6 +47,44 @@ TEST(Trajectory, LoadPathCsv) {
     EXPECT_DOUBLE_EQ(trajectory[2].v, 2.0);
 }
 
+TEST(Trajectory, GeneratesCurvatureAndLimitedSpeedProfile) {
+    const Waypoints waypoints = {{0.0, 0.0}, {3.0, 0.0}, {3.0, 4.0}};
+    TrajectoryOptions options;
+    options.sample_spacing = 0.5;
+    options.target_velocity = 2.0;
+    options.max_velocity = 2.0;
+    options.max_acceleration = 1.0;
+    options.max_deceleration = 1.0;
+    options.max_lateral_acceleration = 1.0;
+
+    const auto trajectory = generateTrajectory(waypoints, options);
+    ASSERT_GT(trajectory.size(), 10u);
+    EXPECT_NEAR(trajectory.front().x, 0.0, 1e-9);
+    EXPECT_NEAR(trajectory.back().y, 4.0, 1e-9);
+    EXPECT_NEAR(trajectory.back().v, 0.0, 1e-9);
+
+    bool found_curvature = false;
+    for (std::size_t i = 0; i < trajectory.size(); ++i) {
+        EXPECT_LE(trajectory[i].v, 2.0 + 1e-9);
+        if (std::abs(trajectory[i].curvature) > 1e-6) {
+            found_curvature = true;
+            EXPECT_LE(trajectory[i].v * trajectory[i].v *
+                          std::abs(trajectory[i].curvature),
+                      1.0 + 1e-6);
+        }
+        if (i > 0) {
+            const double ds = std::hypot(
+                trajectory[i].x - trajectory[i - 1].x,
+                trajectory[i].y - trajectory[i - 1].y);
+            const double acceleration = trajectory[i].acceleration;
+            EXPECT_LE(acceleration, 1.0 + 1e-6);
+            EXPECT_GE(acceleration, -1.0 - 1e-6);
+            EXPECT_GT(ds, 0.0);
+        }
+    }
+    EXPECT_TRUE(found_curvature);
+}
+
 TEST(Kinematics, Step) {
     State s{0, 0, 0, 1.0};
     Control u{1.0, 0.0};

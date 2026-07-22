@@ -1,0 +1,9 @@
+Checks: >-
+  -*,
+  bugprone-*,
+  performance-*,
+  modernize-use-nullptr,
+  modernize-use-override
+WarningsAsErrors: ''
+HeaderFilterRegex: '(/autoplanner/include/|/autompc/include/|/apps/)'
+FormatStyle: file
