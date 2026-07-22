@@ -233,3 +233,14 @@ The expected report has `status_code: "success"`,
 `replanning_count >= 1`, `goal_reached: true`, and `safe_stop: false`.
 Automatic obstacles use a conservative safety envelope and a reachability
 check so the demonstration does not intentionally create an unsolvable map.
+For externally driven updates, repeat `--obstacle FRAME X Y` (or use
+`--clear-obstacle FRAME X Y`) and disable the demo generator with
+`--no-auto-obstacles`:
+
+```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 --controller stanley --smooth none \
+    --frames 20 --steps-per-frame 40 --no-auto-obstacles \
+    --obstacle 1 3 10 --output-dir /tmp/robotnav-external-dynamic
+```

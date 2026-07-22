@@ -105,6 +105,28 @@ TEST(DynamicNavigationPipelineTest, ReplansAndReachesGoalWithoutCollision) {
     EXPECT_FALSE(result.final_path.empty());
 }
 
+TEST(DynamicNavigationPipelineTest, AcceptsExternalObstacleUpdates) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.max_steps = 1000;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.obstacle_updates.push_back({1, {3, 10}, true});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_EQ(result.metrics.external_update_count, 1u);
+    EXPECT_GE(result.metrics.replanning_count, 1u);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+}
+
 TEST(ScenarioConfigTest, LoadsPipelineValues) {
     const auto path = std::filesystem::temp_directory_path() /
                       "robotnav_pipeline_test.yaml";

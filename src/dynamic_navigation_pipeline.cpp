@@ -437,14 +437,30 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
          frame < config.frames && result.metrics.steps < config.pipeline.max_steps;
          ++frame) {
         autoplanner::Point2i obstacle{-1, -1};
+        bool map_changed = false;
+        for (const auto& update : config.obstacle_updates) {
+            if (update.frame != frame ||
+                !dynamic_map.isInside(update.cell.x, update.cell.y)) {
+                continue;
+            }
+            const bool was_occupied = dynamic_map.isOccupied(
+                update.cell.x, update.cell.y);
+            if (dynamic_map.setOccupied(update.cell.x, update.cell.y,
+                                        update.occupied) &&
+                was_occupied != update.occupied) {
+                map_changed = true;
+                obstacle = update.cell;
+                ++result.metrics.external_update_count;
+            }
+        }
         if (config.auto_insert_obstacles && frame > 0 &&
             placed_obstacles.size() < config.max_auto_obstacles) {
-            insertObstacleAhead(dynamic_map, current_path, state,
-                                goal,
-                                config.pipeline.planner_options.allow_diagonal,
-                                config.obstacle_insertion_ahead,
-                                config.auto_obstacle_margin_cells,
-                                placed_obstacles, obstacle);
+            map_changed = insertObstacleAhead(
+                dynamic_map, current_path, state, goal,
+                config.pipeline.planner_options.allow_diagonal,
+                config.obstacle_insertion_ahead,
+                config.auto_obstacle_margin_cells,
+                placed_obstacles, obstacle) || map_changed;
         }
 
         geometry.planning_map = dynamic_map;
@@ -458,8 +474,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         bool replanned = false;
         double dstar_ms = 0.0;
         double astar_ms = 0.0;
-        if (!pathIsValid(*geometry.checker, config.pipeline.footprint,
-                         current_path)) {
+        if (map_changed || !pathIsValid(*geometry.checker,
+                                         config.pipeline.footprint,
+                                         current_path)) {
             const auto current = stateCell(state, geometry.planning_map);
             const auto dstar_begin = std::chrono::steady_clock::now();
             const auto dstar_result = dstar.replan(
@@ -640,6 +657,8 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << "  \"steps\": " << result.metrics.steps << ",\n"
            << "  \"replanning_count\": "
            << result.metrics.replanning_count << ",\n"
+           << "  \"external_update_count\": "
+           << result.metrics.external_update_count << ",\n"
            << "  \"dstar_failure_count\": "
            << result.metrics.dstar_failure_count << ",\n"
            << "  \"astar_fallback_count\": "

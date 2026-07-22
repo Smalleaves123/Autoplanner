@@ -14,6 +14,12 @@
 
 namespace robotnav {
 
+struct DynamicObstacleUpdate {
+    std::size_t frame = 0;
+    autoplanner::Point2i cell{-1, -1};
+    bool occupied = true;
+};
+
 struct DynamicPipelineConfig {
     PipelineConfig pipeline;
     std::size_t frames = 5;
@@ -23,6 +29,7 @@ struct DynamicPipelineConfig {
     std::size_t max_auto_obstacles = 1;
     bool auto_insert_obstacles = true;
     bool compare_astar = true;
+    std::vector<DynamicObstacleUpdate> obstacle_updates;
 };
 
 struct DynamicTraceSample {
@@ -49,6 +56,7 @@ struct DynamicPipelineMetrics {
     std::size_t frames_run = 0;
     std::size_t steps = 0;
     std::size_t replanning_count = 0;
+    std::size_t external_update_count = 0;
     std::size_t dstar_failure_count = 0;
     std::size_t astar_fallback_count = 0;
     std::size_t collision_steps = 0;

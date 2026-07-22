@@ -1,6 +1,8 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "autoplanner/core/grid_map.h"
 #include "robotnav/dynamic_navigation_pipeline.h"
@@ -29,6 +31,8 @@ void printHelp() {
         << "  --obstacle-ahead N    path samples before inserted obstacle\n"
         << "  --obstacle-margin N   safety cells around generated obstacle\n"
         << "  --max-auto-obstacles N  maximum generated obstacles\n"
+        << "  --obstacle FRAME X Y  externally occupy a cell at frame\n"
+        << "  --clear-obstacle FRAME X Y  externally clear a cell at frame\n"
         << "  --no-auto-obstacles   disable automatic obstacle insertion\n"
         << "  --output-dir PATH     output directory\n";
 }
@@ -63,6 +67,7 @@ int main(int argc, char** argv) {
     double width_override = 0.0;
     bool inflate_override = false;
     std::string smoother_override;
+    std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -117,6 +122,14 @@ int main(int argc, char** argv) {
         } else if (arg == "--max-auto-obstacles" && i + 1 < argc) {
             dynamic.max_auto_obstacles =
                 static_cast<std::size_t>(std::stoul(argv[++i]));
+        } else if ((arg == "--obstacle" || arg == "--clear-obstacle") &&
+                   i + 3 < argc) {
+            robotnav::DynamicObstacleUpdate update;
+            update.frame = static_cast<std::size_t>(
+                std::stoul(argv[++i]));
+            update.cell = {std::stoi(argv[++i]), std::stoi(argv[++i])};
+            update.occupied = arg == "--obstacle";
+            obstacle_updates.push_back(update);
         } else if (arg == "--no-auto-obstacles") {
             dynamic.auto_insert_obstacles = false;
         } else if (arg == "--output-dir" && i + 1 < argc) {
@@ -150,6 +163,7 @@ int main(int argc, char** argv) {
     if (has_smoother) scenario.pipeline.smoother = smoother_override;
 
     dynamic.pipeline = scenario.pipeline;
+    dynamic.obstacle_updates = std::move(obstacle_updates);
     if (no_diagonal) dynamic.pipeline.planner_options.allow_diagonal = false;
     autoplanner::GridMap map;
     if (!map.loadFromTxt(scenario.map_path)) {
