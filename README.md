@@ -181,3 +181,34 @@ for these checks.
 ```
 autoplanner (path planning) → reference trajectory → autompc (tracking) → control commands
 ```
+
+## Unified ROS-Free Navigation Pipeline
+
+The top-level `robotnav_pipeline` library combines planning, trajectory
+generation, controller execution, safety checks, and machine-readable trace
+output in one reusable C++ API. It is exposed through a standalone CLI and
+does not require ROS:
+
+```bash
+cmake --build build -j
+./build/apps/navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --output-dir autoplanner/results/navigation_pipeline
+```
+
+The output directory contains `trace.csv` with state and command samples and
+`metrics.json` with status, goal, tracking, and safety metrics. Use
+`--planner`, `--controller`, `--start`, and `--goal` to override scenario
+values for a quick local experiment.
+
+The existing Python orchestrator can select this unified C++ engine while
+keeping its legacy planner/tracker mode available:
+
+```bash
+python3 autoplanner/scripts/run_navigation_pipeline.py \
+    --engine unified \
+    --build_dir build \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --planner astar --controller stanley \
+    --smooth none
+```

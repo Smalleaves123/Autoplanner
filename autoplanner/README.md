@@ -201,6 +201,16 @@ with a fresh A* plan while continuing Stanley or MPC control:
     --output autoplanner/results/dynamic_navigation.csv
 ```
 
+For a reusable ROS-free single-run pipeline covering planning, trajectory
+generation, control, safety checks, and trace/metrics output, use the
+top-level target:
+
+```bash
+./build/apps/navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --output-dir autoplanner/results/navigation_pipeline
+```
+
 ### Run Benchmark
 
 ```bash

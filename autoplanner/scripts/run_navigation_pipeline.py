@@ -51,9 +51,59 @@ def read_json(path: Path) -> dict:
         return json.load(f)
 
 
+def run_unified_pipeline(args, build_dir: Path, map_path: Path,
+                         output_dir: Path) -> int:
+    """Run the reusable C++ pipeline while preserving the legacy runner."""
+    pipeline_cli = build_dir / "apps" / "navigation_pipeline_cli"
+    if not pipeline_cli.exists():
+        print("Unified pipeline executable not found. Build the project first:",
+              file=sys.stderr)
+        return 1
+    if args.footprint != "point" or args.inflate or args.smooth != "none":
+        print("--engine unified currently requires point footprint, no inflation, "
+              "and --smooth none", file=sys.stderr)
+        return 1
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    max_steps = args.steps if args.steps is not None else 2500
+    command = [
+        str(pipeline_cli),
+        "--map", str(map_path),
+        "--planner", args.planner,
+        "--controller", args.controller,
+        "--start", str(args.start[0]), str(args.start[1]),
+        "--goal", str(args.goal[0]), str(args.goal[1]),
+        "--max-steps", str(max_steps),
+        "--velocity", str(args.velocity),
+        "--dt", str(args.dt),
+        "--output-dir", str(output_dir),
+    ]
+    print("Running unified C++ navigation pipeline...")
+    completed = subprocess.run(command, text=True)
+    metrics_file = output_dir / "metrics.json"
+    trace_file = output_dir / "trace.csv"
+    if completed.returncode != 0 or not metrics_file.exists() or not trace_file.exists():
+        print("Unified pipeline failed; see the C++ output above.", file=sys.stderr)
+        return completed.returncode or 2
+
+    summary_file = output_dir / "summary.json"
+    with summary_file.open("w") as stream:
+        json.dump({
+            "engine": "unified",
+            "pipeline": read_json(metrics_file),
+            "trace_csv": str(trace_file),
+        }, stream, indent=2)
+        stream.write("\n")
+    print(f"Pipeline complete: {output_dir}")
+    print(f"Summary: {summary_file}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run AutoPlanner to AutoMPC")
     parser.add_argument("--build_dir", default="build")
+    parser.add_argument("--engine", choices=("legacy", "unified"),
+                        default="legacy")
     parser.add_argument("--map", default="autoplanner/data/maps/simple_50x50.txt")
     parser.add_argument("--planner", default="improved_astar")
     parser.add_argument("--controller", default="stanley",
@@ -86,6 +136,9 @@ def main() -> int:
     build_dir = resolve_path(args.build_dir)
     map_path = resolve_path(args.map)
     output_dir = resolve_path(args.output_dir)
+    if args.engine == "unified":
+        return run_unified_pipeline(args, build_dir, map_path, output_dir)
+
     planning_dir = output_dir / "planning"
     tracking_csv = output_dir / "tracking.csv"
     tracking_metrics = output_dir / "tracking_metrics.json"

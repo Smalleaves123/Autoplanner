@@ -1,0 +1,35 @@
+map:
+  path: autoplanner/data/maps/simple_50x50.txt
+  resolution: 1.0
+start:
+  x: 1
+  y: 1
+goal:
+  x: 48
+  y: 48
+planner:
+  name: astar
+  allow_diagonal: true
+controller:
+  name: stanley
+pipeline:
+  max_steps: 2500
+trajectory:
+  sample_spacing: 0.5
+  target_velocity: 1.0
+  max_velocity: 2.0
+  max_acceleration: 1.5
+  max_deceleration: 2.0
+  max_lateral_acceleration: 1.5
+simulation:
+  dt: 0.05
+  wheelbase: 1.0
+  max_velocity: 2.0
+  max_acceleration: 1.5
+  max_deceleration: 2.0
+  max_steering: 0.7
+  max_steering_rate: 1.5
+safety:
+  goal_tolerance: 0.75
+  max_cross_track_error: 5.0
+  enforce_collision: true
