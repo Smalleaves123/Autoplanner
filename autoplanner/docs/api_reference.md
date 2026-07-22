@@ -104,6 +104,13 @@ struct PlannerResult {
     int expanded_nodes = 0;
     int iterations = 0;
 
+    bool collision_free = false;
+    int turning_count = 0;
+    double total_turning = 0.0;
+    double average_curvature = 0.0;
+    double smoothness_score = 0.0;
+    double minimum_obstacle_distance = 0.0;
+
     std::string message;
 };
 

@@ -548,11 +548,12 @@ struct PlannerResult {
     int iterations = 0;
 
     int turning_count = 0;
+    double total_turning = 0.0;
     double smoothness_score = 0.0;
-    double min_obstacle_distance = 0.0;
+    double minimum_obstacle_distance = 0.0;
     double average_curvature = 0.0;
 
-    bool collision_free = true;
+    bool collision_free = false;
 
     std::string message;
 };
@@ -2125,6 +2126,5 @@ A*
 这个路线从简单到复杂，既能保证项目持续产出，也能逐步增加算法深度和工程含金量。
 
 最终 AutoPlanner 可以作为你的第一个核心 C++ 算法工程项目，为后续 AutoMPC 和 TD-MPC2 C++ Planning Engine 打基础。
-
 
 

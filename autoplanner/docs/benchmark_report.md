@@ -1,124 +1,94 @@
 # Benchmark Report
 
-## Methodology
+## Purpose
 
-All planners are evaluated on four map types with fixed start/goal pairs.
-Timing measurements exclude map loading and I/O overhead.
+RobotNav benchmarks the complete navigation workflow using measured outputs:
 
-### Maps
-
-| Map | Size | Type |
-|-----|------|------|
-| `simple_50x50.txt` | 50×50 | Open area with scattered obstacles |
-| `maze_100x100.txt` | 100×100 | Maze-like corridors |
-| `warehouse_100x100.txt` | 100×100 | Warehouse with shelf aisles |
-| `random_100x100_density_20.txt` | 100×100 | Random obstacles at 20% density |
-
-### Planners Compared
-
-- **Dijkstra** — baseline shortest-path (no heuristic)
-- **A\*** — standard with Euclidean heuristic
-- **Weighted A\*** — A\* with weight 1.5
-- **Improved A\*** — A\* with obstacle + turning costs
-- **JPS** — jump point search acceleration
-- **RRT** — sampling-based with goal bias
-- **RRT\*** — asymptotically optimal sampling
-
-### Metrics
-
-| Metric | Description |
-|--------|-------------|
-| `planning_time_ms` | Wall-clock planning time |
-| `path_length` | Euclidean length of the output path |
-| `expanded_nodes` | Nodes visited during search |
-| `turning_count` | Number of direction changes in the path |
-| `smoothness_score` | Ratio of straight-line distance to path length (1.0 = straight) |
-| `minimum_obstacle_distance` | Closest approach to any obstacle |
-
----
-
-## Expected Results
-
-Based on algorithm properties, the benchmark is expected to show the following
-trends:
-
-### Planning Time
-
-```
-RRT ≈ RRT* < JPS < A* < Weighted A* < Improved A* < Dijkstra
+```text
+planner -> collision-checked path -> reference trajectory -> controller
 ```
 
-- Dijkstra expands in all directions → slowest.
-- JPS skips intermediate nodes → faster than A\* on open maps.
-- RRT/RRT\* sample sparsely → fast to find a first path.
+The benchmark does not encode expected algorithm rankings. Each run stores the
+raw path, trajectory, tracking CSV, per-run JSON metrics, and combined CSV
+ledgers so that conclusions can be regenerated from the actual data.
 
-### Path Length
+## Metrics
 
-```
-Dijkstra ≈ A* ≈ JPS < Weighted A* < Improved A* < RRT* < RRT
-```
+### Planning
 
-- Dijkstra/A\*/JPS produce optimal or near-optimal lengths.
-- Weighted A\* may inflate length slightly.
-- Improved A\* may be longer but safer.
-- RRT paths are typically longer and noisier.
+| Field | Meaning |
+|---|---|
+| `success` | Planner returned a valid result |
+| `collision_free` | Final path passed the selected footprint checker |
+| `planning_time_ms` | Measured planning time |
+| `path_length` | Euclidean length of the final path |
+| `minimum_obstacle_distance` | Minimum distance from path points to occupied cells |
+| `turning_count` | Number of non-collinear direction changes |
+| `average_curvature` | Mean absolute discrete curvature |
+| `smoothness_score` | Straight-line distance divided by path length |
 
-### Expanded Nodes
+### Tracking
 
-```
-JPS ≪ A* < Weighted A* < Improved A* < Dijkstra
-```
+Both Stanley and MPC are evaluated on the same saved planner path and the same
+generated trajectory. The benchmark records maximum and mean cross-track error,
+maximum and mean heading error, goal distance, and whether the goal was reached.
 
-- JPS dramatically reduces expanded nodes on uniform grids.
-- The heuristic in A\* directs search, reducing nodes vs Dijkstra.
-- Weighted A\* tightens the search further.
+### Dynamic replanning
 
-### Safety (Min Obstacle Distance)
+The `dynamic_navigation` executable inserts an obstacle ahead of the robot on
+several frames. It automatically checks whether the current path is invalid,
+triggers D* Lite, runs a fresh A* plan on the same map as a baseline, updates
+the reference trajectory, and continues control from the previous command.
+The per-step CSV and JSON summary record replan count, D*/A* timing, steering
+and velocity jumps, and replan-time control continuity.
+If incremental replanning fails, the summary marks `safe_stop=true` and keeps
+the run as a failed dynamic-navigation case.
 
-```
-Improved A* ≫ A* ≈ Dijkstra ≈ JPS
-```
+## Reproduce
 
-- Improved A\* explicitly penalizes obstacle proximity.
-- Standard planners have no safety margin beyond grid connectivity.
-
-### Path Smoothness
-
-```
-Improved A* > A* (after smoothing) > RRT* > RRT
-```
-
-- Improved A\*'s turning penalty produces inherently smoother paths.
-- Post-smoothing (shortcut, Bezier) dramatically improves all planners.
-
----
-
-## Ablation Study: Improved A\*
-
-The contribution of each term in Improved A\*'s cost function can be isolated:
-
-| Configuration | Obstacle cost | Turning cost | Expected effect |
-|---------------|---------------|--------------|-----------------|
-| A\* | off | off | baseline |
-| A\* + obstacle | on | off | greater safety distance |
-| A\* + turning | off | on | fewer turns |
-| Improved A\* | on | on | best safety + smoothness |
-
----
-
-## Regenerating Results
+From the repository root:
 
 ```bash
-# Build
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
-# Run full benchmark
-./build/benchmark/benchmark_all
+python3 autoplanner/scripts/run_all_experiments.py \
+    --build_dir build \
+    --data_dir autoplanner/data \
+    --output_dir autoplanner/results/benchmark \
+    --repeat 3 \
+    --controllers stanley pure_pursuit mpc \
+    --smooth shortcut
 
-# Compare planners on one map
-./build/apps/compare_planners --map data/maps/warehouse_100x100.txt --start 1 1 --goal 98 98
-
-# Plot results (requires Python with matplotlib)
-python scripts/plot_benchmark.py results/benchmark/benchmark_all.csv
+python3 autoplanner/scripts/compare_results.py \
+    autoplanner/results/benchmark \
+    --output autoplanner/results/benchmark/report.txt
 ```
+
+The runner writes:
+
+```text
+autoplanner/results/benchmark/
+├── planning_results.csv
+├── tracking_results.csv
+├── dynamic_replanning_results.csv
+├── benchmark_manifest.json
+└── <planner>_<map>_<repeat>/
+    ├── planning/path.csv
+    ├── planning/metrics.json
+    ├── tracking/<controller>/tracking.csv
+    ├── tracking/<controller>/trajectory.csv
+    └── tracking/<controller>/tracking_metrics.json
+```
+
+Use `--repeat 1` for a quick smoke benchmark. Sampling-based planners should
+use multiple repeats because their measured results are stochastic.
+
+## Interpretation rules
+
+- Report success rates over all attempted runs.
+- Report path and timing averages over successful planning runs only.
+- Report tracking metrics by planner and controller separately.
+- Keep failed runs in the CSV ledger; do not replace them with expected values.
+- Compare planners under the same map, start/goal, footprint, smoothing mode,
+  and controller configuration.

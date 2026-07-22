@@ -17,13 +17,23 @@ def main():
     import os
     os.makedirs(args.output_dir, exist_ok=True)
 
-    metrics = [
-        ('time_ms', 'Planning Time (ms)'),
+    time_column = 'planning_time_ms' if 'planning_time_ms' in df.columns else 'time_ms'
+    metric_candidates = [
+        (time_column, 'Planning Time (ms)'),
         ('path_length', 'Path Length'),
-        ('expanded_nodes', 'Expanded Nodes'),
+        ('minimum_obstacle_distance', 'Minimum Obstacle Distance'),
+        ('turning_count', 'Turning Count'),
+        ('average_curvature', 'Average Curvature'),
+        ('smoothness_score', 'Smoothness Score'),
     ]
+    metrics = [(column, title) for column, title in metric_candidates
+               if column in df.columns]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    columns = min(3, max(1, len(metrics)))
+    rows = int(np.ceil(len(metrics) / columns))
+    fig, axes = plt.subplots(rows, columns,
+                             figsize=(6 * columns, 5 * rows), squeeze=False)
+    axes = axes.ravel()
     for ax, (col, title) in zip(axes, metrics):
         piv = df_ok.pivot_table(values=col, index='planner',
                                  columns='map', aggfunc='mean')
@@ -32,6 +42,8 @@ def main():
         ax.set_xlabel('')
         ax.tick_params(axis='x', rotation=45)
         ax.legend(title='', fontsize=8)
+    for ax in axes[len(metrics):]:
+        ax.remove()
     plt.tight_layout()
     plt.savefig(f'{args.output_dir}/benchmark_compare.png', dpi=150)
     print(f'Saved: {args.output_dir}/benchmark_compare.png')

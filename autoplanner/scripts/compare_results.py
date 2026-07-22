@@ -1,121 +1,191 @@
 #!/usr/bin/env python3
-"""Compare benchmark results using only Python's standard library.
-
-Usage:
-    python scripts/compare_results.py results/benchmark/all_results.csv
-"""
+"""Summarize the real CSV/JSON benchmark ledger."""
 import argparse
 import csv
 import statistics
 import sys
 from collections import defaultdict
+from pathlib import Path
 
 
-METRICS = ("time_ms", "path_length", "expanded_nodes")
-
-
-def load_rows(path):
+def load_rows(path: Path) -> list[dict]:
     try:
-        with open(path, newline="") as f:
-            rows = list(csv.DictReader(f))
+        with path.open(newline="") as stream:
+            return list(csv.DictReader(stream))
     except FileNotFoundError:
         print(f"File not found: {path}", file=sys.stderr)
-        sys.exit(1)
-
-    for row in rows:
-        row["success"] = row.get("success", "").lower() in ("1", "true", "yes")
-        for metric in METRICS:
-            try:
-                row[metric] = float(row.get(metric, 0.0))
-            except (TypeError, ValueError):
-                row[metric] = 0.0
-    return rows
+        return []
 
 
-def group_by(rows, key):
-    groups = defaultdict(list)
-    for row in rows:
-        groups[row.get(key, "unknown")].append(row)
-    return groups
+def as_bool(value) -> bool:
+    return str(value).lower() in ("1", "true", "yes")
 
 
-def mean(rows, metric):
-    values = [row[metric] for row in rows]
+def as_float(row: dict, key: str) -> float:
+    try:
+        return float(row.get(key, 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def as_int(row: dict, key: str) -> int:
+    try:
+        return int(row.get(key, 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def mean(rows: list[dict], key: str) -> float:
+    values = [as_float(row, key) for row in rows]
     return statistics.fmean(values) if values else 0.0
 
 
-def format_table(headers, table):
+def format_table(headers: list[str], rows: list[list]) -> str:
     widths = [len(str(header)) for header in headers]
-    for row in table:
-        for i, value in enumerate(row):
-            widths[i] = max(widths[i], len(str(value)))
+    for row in rows:
+        for index, value in enumerate(row):
+            widths[index] = max(widths[index], len(str(value)))
 
     def render(row):
-        return "  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row))
+        return "  ".join(str(value).ljust(widths[i])
+                         for i, value in enumerate(row))
 
-    return "\n".join([render(headers), render(["-" * width for width in widths])]
-                     + [render(row) for row in table])
+    separator = ["-" * width for width in widths]
+    return "\n".join([render(headers), render(separator)] +
+                     [render(row) for row in rows])
 
 
-def build_report(rows):
-    lines = ["=" * 70, "BENCHMARK SUMMARY", "=" * 70]
+def planning_report(rows: list[dict]) -> list[str]:
+    for row in rows:
+        row["success_bool"] = as_bool(row.get("success"))
+        row["collision_bool"] = as_bool(row.get("collision_free"))
 
-    planner_groups = group_by(rows, "planner")
-    success_table = []
-    for planner, group in sorted(planner_groups.items()):
-        success_table.append([
+    lines = ["", "=== Planning benchmark ==="]
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[row.get("planner", "unknown")].append(row)
+
+    success_rows = []
+    for planner, group in sorted(grouped.items()):
+        success_rows.append([
             planner,
-            f"{100.0 * sum(row['success'] for row in group) / len(group):.1f}%",
+            f"{100.0 * sum(r['success_bool'] for r in group) / len(group):.1f}%",
+            f"{100.0 * sum(r['collision_bool'] for r in group) / len(group):.1f}%",
             len(group),
         ])
-    lines += ["", "--- Success Rate by Planner ---",
-              format_table(["Planner", "Success %", "Runs"], success_table)]
+    lines += ["", "Success and collision-free rates",
+              format_table(["Planner", "Success %", "Collision %", "Runs"],
+                           success_rows)]
 
-    ok = [row for row in rows if row["success"]]
-    if ok:
-        avg_table = []
-        for planner, group in sorted(group_by(ok, "planner").items()):
-            avg_table.append([planner] + [f"{mean(group, metric):.3f}" for metric in METRICS])
-        lines += ["", "--- Average Metrics (successful runs only) ---",
-                  format_table(["Planner", *METRICS], avg_table)]
+    successful = [row for row in rows if row["success_bool"]]
+    metrics = ["planning_time_ms", "path_length", "minimum_obstacle_distance",
+               "turning_count", "average_curvature", "smoothness_score"]
+    average_rows = []
+    for planner, group in sorted(grouped.items()):
+        group = [row for row in group if row["success_bool"]]
+        if group:
+            average_rows.append([planner] +
+                                [f"{mean(group, metric):.4f}" for metric in metrics])
+    if average_rows:
+        lines += ["", "Successful runs: mean path metrics",
+                  format_table(["Planner", *metrics], average_rows)]
 
-        lines += ["", "--- Planning Time (ms) by Planner x Map ---"]
-        lines.append(format_pivot(ok, "time_ms"))
-        lines += ["", "--- Path Length by Planner x Map ---"]
-        lines.append(format_pivot(ok, "path_length"))
+    if successful:
+        lines += ["", "Planning time by planner x map"]
+        maps = sorted({row.get("map", "unknown") for row in successful})
+        pivot = []
+        for planner in sorted(grouped):
+            pivot.append([planner] + [
+                f"{mean([row for row in successful
+                         if row.get('planner') == planner and row.get('map') == map_name],
+                        'planning_time_ms'):.4f}"
+                if any(row.get("planner") == planner and row.get("map") == map_name
+                       for row in successful) else "-"
+                for map_name in maps
+            ])
+        lines.append(format_table(["Planner", *maps], pivot))
+    return lines
 
-    lines.append("=" * 70)
-    return "\n".join(lines)
 
-
-def format_pivot(rows, metric):
-    maps = sorted({row.get("map", "unknown") for row in rows})
-    planners = sorted({row.get("planner", "unknown") for row in rows})
+def tracking_report(rows: list[dict]) -> list[str]:
+    if not rows:
+        return []
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[(row.get("planner", "unknown"),
+                 row.get("controller", "unknown"))].append(row)
     table = []
-    for planner in planners:
-        values = []
-        for map_name in maps:
-            selected = [row for row in rows
-                        if row.get("planner") == planner and row.get("map") == map_name]
-            values.append(f"{mean(selected, metric):.3f}" if selected else "-")
-        table.append([planner, *values])
-    return format_table(["Planner", *maps], table)
+    for (planner, controller), group in sorted(grouped.items()):
+        table.append([
+            planner, controller, len(group),
+            f"{100.0 * sum(as_bool(r.get('goal_reached')) for r in group) / len(group):.1f}%",
+            f"{mean(group, 'mean_cross_track'):.4f}",
+            f"{mean(group, 'max_cross_track'):.4f}",
+            f"{mean(group, 'mean_heading_error'):.4f}",
+            f"{mean(group, 'max_heading_error'):.4f}",
+        ])
+    return ["", "=== Tracking benchmark ===", "",
+            format_table(["Planner", "Controller", "Runs", "Goal %",
+                          "Mean CTE", "Max CTE", "Mean HE", "Max HE"], table)]
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Summarize benchmark CSV results")
-    parser.add_argument("csv_path", help="benchmark CSV file")
-    parser.add_argument("--output", "-o", default=None,
-                        help="save the text summary to a file")
+def dynamic_report(rows: list[dict]) -> list[str]:
+    if not rows:
+        return []
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[(row.get("map", "unknown"),
+                 row.get("controller", "unknown"))].append(row)
+    table = []
+    for (map_name, controller), group in sorted(grouped.items()):
+        table.append([
+            map_name, controller, len(group),
+            f"{mean(group, 'replanning_count'):.2f}",
+            f"{mean(group, 'dstar_total_time_ms'):.4f}",
+            f"{mean(group, 'astar_total_time_ms'):.4f}",
+            f"{mean(group, 'dstar_over_astar_speedup'):.2f}",
+            f"{mean(group, 'mean_replan_steering_delta'):.4f}",
+            f"{100.0 * statistics.fmean(
+                as_float(r, 'frames_run') /
+                max(as_float(r, 'frames_requested'), 1.0)
+                for r in group):.1f}%",
+        ])
+    return ["", "=== Dynamic replanning benchmark ===", "",
+            format_table(["Map", "Controller", "Runs", "Replans",
+                          "D* ms", "A* ms", "Speedup", "Replan steer jump",
+                          "Frames complete %"], table)]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Compare RobotNav benchmark CSVs")
+    parser.add_argument("results", help="CSV file or benchmark output directory")
+    parser.add_argument("--tracking-csv", default=None)
+    parser.add_argument("--dynamic-csv", default=None)
+    parser.add_argument("--output", "-o", default=None)
     args = parser.parse_args()
 
-    report = build_report(load_rows(args.csv_path))
+    root = Path(args.results)
+    if root.is_dir():
+        planning_path = root / "planning_results.csv"
+        tracking_path = root / "tracking_results.csv"
+        dynamic_path = root / "dynamic_replanning_results.csv"
+    else:
+        planning_path = root
+        tracking_path = Path(args.tracking_csv) if args.tracking_csv else None
+        dynamic_path = Path(args.dynamic_csv) if args.dynamic_csv else None
+
+    lines = ["=" * 100, "ROBOTNAV BENCHMARK SUMMARY", "=" * 100]
+    lines += planning_report(load_rows(planning_path))
+    lines += tracking_report(load_rows(tracking_path) if tracking_path else [])
+    lines += dynamic_report(load_rows(dynamic_path) if dynamic_path else [])
+    lines += ["", "=" * 100]
+    report = "\n".join(lines)
     print(report)
     if args.output:
-        with open(args.output, "w") as f:
-            f.write(report + "\n")
+        Path(args.output).write_text(report + "\n")
         print(f"\nSummary saved to {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

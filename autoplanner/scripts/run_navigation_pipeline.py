@@ -64,6 +64,8 @@ def main() -> int:
     parser.add_argument("--max-acceleration", type=float, default=1.5)
     parser.add_argument("--max-deceleration", type=float, default=2.0)
     parser.add_argument("--max-steering-rate", type=float, default=1.5)
+    parser.add_argument("--sample-spacing", type=float, default=0.5)
+    parser.add_argument("--max-lateral-acceleration", type=float, default=1.5)
     parser.add_argument("--start", nargs=2, type=int, default=(1, 1))
     parser.add_argument("--goal", nargs=2, type=int, default=(48, 48))
     parser.add_argument("--velocity", type=float, default=1.0)
@@ -87,6 +89,7 @@ def main() -> int:
     planning_dir = output_dir / "planning"
     tracking_csv = output_dir / "tracking.csv"
     tracking_metrics = output_dir / "tracking_metrics.json"
+    trajectory_csv = output_dir / "trajectory.csv"
     planning_dir.mkdir(parents=True, exist_ok=True)
 
     planner_cli = build_dir / "apps" / "autoplanner_cli"
@@ -133,7 +136,7 @@ def main() -> int:
     steps = args.steps
     if steps is None:
         distance_per_step = max(args.velocity * args.dt, 1e-6)
-        steps = max(100, math.ceil(total_length / distance_per_step) + 100)
+        steps = max(100, math.ceil(1.5 * total_length / distance_per_step) + 100)
 
     tracker_cmd = [
         str(tracker_cli),
@@ -141,10 +144,16 @@ def main() -> int:
         "--trajectory", "path",
         "--path", str(path_file),
         "--velocity", str(args.velocity),
+        "--max-velocity", str(args.max_velocity),
+        "--max-acceleration", str(args.max_acceleration),
+        "--max-deceleration", str(args.max_deceleration),
+        "--sample-spacing", str(args.sample_spacing),
+        "--max-lateral-acceleration", str(args.max_lateral_acceleration),
         "--steps", str(steps),
         "--dt", str(args.dt),
         "--output", str(tracking_csv),
         "--metrics", str(tracking_metrics),
+        "--trajectory-output", str(trajectory_csv),
     ]
     if args.controller == "mpc":
         tracker_cmd += ["--mpc-horizon", str(args.mpc_horizon),
@@ -156,7 +165,8 @@ def main() -> int:
 
     print(f"[2/2] Tracking {total_length:.2f} m with {steps} steps...")
     tracking = subprocess.run(tracker_cmd, text=True)
-    if tracking.returncode != 0 or not tracking_metrics.exists():
+    if (tracking.returncode != 0 or not tracking_metrics.exists() or
+            not trajectory_csv.exists()):
         print("Tracking failed; see the tracker output above.", file=sys.stderr)
         return tracking.returncode or 3
 
@@ -165,6 +175,7 @@ def main() -> int:
         "tracking": read_json(tracking_metrics),
         "path_length_from_csv": total_length,
         "tracking_steps": steps,
+        "trajectory_csv": str(trajectory_csv),
     }
     summary_file = output_dir / "summary.json"
     with summary_file.open("w") as f:
