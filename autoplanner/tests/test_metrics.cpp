@@ -1,8 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <fstream>
+#include <limits>
+
+#include "autoplanner/core/grid_map.h"
 #include "autoplanner/core/path.h"
 #include "autoplanner/core/planner_result.h"
 #include "autoplanner/metrics/path_metrics.h"
+#include "autoplanner/planners/graph_search/astar.h"
 
 using namespace autoplanner;
 
@@ -82,4 +87,35 @@ TEST(PathMetrics, MinObstacleDistanceEmpty) {
 
     double d2 = computeMinObstacleDistance({{0.0, 0.0}}, {});
     EXPECT_TRUE(std::isinf(d2));
+}
+
+TEST(PlannerResult, ExposesStableStatusCode) {
+    GridMap map;
+    ASSERT_TRUE(map.loadFromTxt("data/maps/simple_50x50.txt"));
+
+    AStarPlanner planner(false);
+    const auto success = planner.plan(map, {1, 1}, {48, 48});
+    EXPECT_EQ(success.statusCodeString(), "success");
+
+    const auto invalid_start = planner.plan(map, {0, 0}, {48, 48});
+    EXPECT_EQ(invalid_start.statusCodeString(), "invalid_start");
+}
+
+TEST(PlannerResult, MetricsJsonEscapesTextAndRejectsNonFiniteNumbers) {
+    PlannerResult result;
+    result.planner_name = "planner\"name";
+    result.message = "line one\nline two";
+    result.minimum_obstacle_distance =
+        std::numeric_limits<double>::infinity();
+
+    const std::string output_path = "/tmp/robotnav_metrics.json";
+    ASSERT_TRUE(saveMetricsJson(result, output_path));
+
+    std::ifstream input(output_path);
+    const std::string json((std::istreambuf_iterator<char>(input)),
+                           std::istreambuf_iterator<char>());
+    EXPECT_NE(json.find("planner\\\"name"), std::string::npos);
+    EXPECT_NE(json.find("line one\\nline two"), std::string::npos);
+    EXPECT_NE(json.find("\"minimum_obstacle_distance\": null"),
+              std::string::npos);
 }

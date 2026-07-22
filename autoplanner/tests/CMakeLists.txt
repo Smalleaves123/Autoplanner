@@ -7,18 +7,25 @@ function(add_autoplanner_test name source)
     target_link_libraries(${name} PRIVATE autoplanner GTest::GTest GTest::Main)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
     target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
-    # Set rpath so the binary can find GTest dylibs at runtime.
-    set_target_properties(${name} PROPERTIES
-        BUILD_RPATH "/opt/anaconda3/lib"
-    )
+    set(gtest_runtime_target "")
+    if(TARGET GTest::gtest_main)
+        set(gtest_runtime_target "GTest::gtest_main")
+    elseif(TARGET GTest::Main)
+        get_target_property(gtest_main_type GTest::Main TYPE)
+        if(NOT gtest_main_type STREQUAL "INTERFACE_LIBRARY")
+            set(gtest_runtime_target "GTest::Main")
+        endif()
+    endif()
+    if(gtest_runtime_target)
+        # Keep the test binary relocatable while allowing package-managed
+        # shared GTest libraries to be found on macOS and Linux.
+        set_property(TARGET ${name} APPEND PROPERTY BUILD_RPATH
+                     "$<TARGET_FILE_DIR:${gtest_runtime_target}>")
+    endif()
     add_test(
         NAME ${name}
         COMMAND ${name}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
-    )
-    # macOS needs DYLD_LIBRARY_PATH for conda-installed GTest.
-    set_tests_properties(${name} PROPERTIES
-        ENVIRONMENT "DYLD_LIBRARY_PATH=/opt/anaconda3/lib"
     )
 endfunction()
 

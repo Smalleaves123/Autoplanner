@@ -11,7 +11,6 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kTwopi = 2.0 * kPi;
-constexpr double kHalfPi = kPi / 2.0;
 
 // Normalize angle to [-pi, pi].
 double mod2pi(double theta) {
@@ -72,14 +71,14 @@ void transform(double x0, double y0, double t0,
 }
 
 // TimeFlip: reflect y and phi (corresponds to time reversal).
-void timeflip(double& x, double& y, double& phi) {
+void timeflip(double& /*x*/, double& y, double& phi) {
     y = -y;
     phi = -phi;
     phi = mod2pi(phi);
 }
 
 // Reflect: swap left/right turns (x mirror).
-void reflect(double& x, double& y, double& phi) {
+void reflect(double& /*x*/, double& y, double& phi) {
     y = -y;
     phi = -phi;
     phi = mod2pi(phi);
@@ -159,7 +158,7 @@ std::vector<RSPath> ccc_candidates(double x, double y, double phi) {
 }
 
 // C|C|C and C|CC and CC|C candidates
-std::vector<RSPath> ccc_extra(double x, double y, double phi) {
+[[maybe_unused]] std::vector<RSPath> ccc_extra(double x, double y, double phi) {
     std::vector<RSPath> paths;
 
     // case 6: L+R-L+ invariant under timeflip

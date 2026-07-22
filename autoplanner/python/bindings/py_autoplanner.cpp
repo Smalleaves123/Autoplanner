@@ -41,10 +41,14 @@ PlannerResult planNamed(
     const std::string& name, const GridMap& map,
     const Point2i& start, const Point2i& goal,
     const PlannerFactoryOptions& options) {
+    GridMap planning_map = map;
+    if (options.robot_radius > 0.0) {
+        planning_map.inflateObstacles(options.robot_radius);
+    }
     Costmap2D costmap;
     const Costmap2D* costmap_ptr = nullptr;
     if (name == "improved_astar") {
-        costmap.buildFromGridMap(map);
+        costmap.buildFromGridMap(planning_map);
         if (options.robot_radius > 0.0) {
             costmap.inflateObstacles(options.robot_radius);
         }
@@ -54,7 +58,7 @@ PlannerResult planNamed(
     if (!planner) {
         throw std::invalid_argument("unknown planner: " + name);
     }
-    return planWithGILReleased(*planner, map, start, goal);
+    return planWithGILReleased(*planner, planning_map, start, goal);
 }
 
 PlannerResult replanWithGILReleased(
@@ -101,12 +105,22 @@ PYBIND11_MODULE(_autoplanner, m) {
 
     py::class_<PlannerResult>(m, "PlannerResult")
         .def_readonly("success", &PlannerResult::success)
+        .def_property_readonly("status_code", [](const PlannerResult& result) {
+            return std::string(result.statusCodeString());
+        })
         .def_readonly("planner_name", &PlannerResult::planner_name)
         .def_readonly("path", &PlannerResult::path)
         .def_readonly("path_length", &PlannerResult::path_length)
         .def_readonly("planning_time_ms", &PlannerResult::planning_time_ms)
         .def_readonly("expanded_nodes", &PlannerResult::expanded_nodes)
         .def_readonly("iterations", &PlannerResult::iterations)
+        .def_readonly("collision_free", &PlannerResult::collision_free)
+        .def_readonly("turning_count", &PlannerResult::turning_count)
+        .def_readonly("total_turning", &PlannerResult::total_turning)
+        .def_readonly("average_curvature", &PlannerResult::average_curvature)
+        .def_readonly("smoothness_score", &PlannerResult::smoothness_score)
+        .def_readonly("minimum_obstacle_distance",
+                      &PlannerResult::minimum_obstacle_distance)
         .def_readonly("message", &PlannerResult::message);
 
     py::class_<PlannerFactoryOptions>(m, "PlannerOptions")

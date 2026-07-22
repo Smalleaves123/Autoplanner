@@ -111,7 +111,8 @@ void GridMap::inflateObstacles(double radius) {
     if (isEmpty() || radius <= 0.0) return;
 
     const double cell_size = resolution_ > 0.0 ? resolution_ : 1.0;
-    const int radius_cells = static_cast<int>(std::ceil(radius / cell_size));
+    const int radius_cells = static_cast<int>(
+        std::ceil(radius / cell_size + 0.5));
     const std::vector<int> original = data_;
 
     for (int y = 0; y < height_; ++y) {
@@ -119,11 +120,25 @@ void GridMap::inflateObstacles(double radius) {
             bool occupied = false;
             for (int dy = -radius_cells; dy <= radius_cells && !occupied; ++dy) {
                 for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
-                    if (dx * dx + dy * dy > radius_cells * radius_cells) continue;
                     const int nx = x + dx;
                     const int ny = y + dy;
-                    if (isInside(nx, ny) &&
-                        original[static_cast<std::size_t>(index(nx, ny))] != 0) {
+                    if (!isInside(nx, ny) ||
+                        original[static_cast<std::size_t>(index(nx, ny))] == 0) {
+                        continue;
+                    }
+                    // An occupied cell represents a square, not a point.
+                    // Measure the distance from the candidate cell centre to
+                    // that square so sub-cell vehicle radii do not inflate an
+                    // entire adjacent corridor unnecessarily.
+                    const double dx_to_cell = std::max(
+                        std::abs(static_cast<double>(dx)) * cell_size -
+                            0.5 * cell_size,
+                        0.0);
+                    const double dy_to_cell = std::max(
+                        std::abs(static_cast<double>(dy)) * cell_size -
+                            0.5 * cell_size,
+                        0.0);
+                    if (std::hypot(dx_to_cell, dy_to_cell) <= radius) {
                         occupied = true;
                         break;
                     }

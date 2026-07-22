@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <fstream>
+
 #include "autoplanner/core/grid_map.h"
 
 using namespace autoplanner;
@@ -63,4 +65,26 @@ TEST(GridMap, IndexFlattening) {
 TEST(GridMap, LoadNonexistentFile) {
     GridMap map;
     EXPECT_FALSE(map.loadFromTxt("nonexistent_file.txt"));
+}
+
+TEST(GridMap, InflationUsesCellGeometry) {
+    const std::string path = "/tmp/robotnav_inflation_geometry.txt";
+    std::ofstream output(path);
+    output << "00000\n"
+           << "00000\n"
+           << "00100\n"
+           << "00000\n"
+           << "00000\n";
+    output.close();
+
+    GridMap small_radius;
+    ASSERT_TRUE(small_radius.loadFromTxt(path));
+    small_radius.inflateObstacles(0.4);
+    EXPECT_TRUE(small_radius.isFree(1, 2));
+    EXPECT_TRUE(small_radius.isOccupied(2, 2));
+
+    GridMap cell_radius;
+    ASSERT_TRUE(cell_radius.loadFromTxt(path));
+    cell_radius.inflateObstacles(0.5);
+    EXPECT_TRUE(cell_radius.isOccupied(1, 2));
 }

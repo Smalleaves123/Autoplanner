@@ -13,6 +13,7 @@
 #include "autoplanner/io/config_loader.h"
 #include "autoplanner/costmap/costmap_2d.h"
 #include "autoplanner/costmap/obstacle_inflation.h"
+#include "autoplanner/metrics/path_metrics.h"
 #include "autoplanner/smoothing/shortcut_smoother.h"
 
 using namespace autoplanner;
@@ -192,7 +193,11 @@ int main(int argc, char** argv) {
     }
 
     GridMap planning_map = map;
-    if (inflate_map) {
+    // Improved A* receives a proximity costmap, but traversability must also
+    // respect the requested footprint. Otherwise robot_radius only changes
+    // ranking and a returned path can still pass through the vehicle body.
+    if (inflate_map ||
+        (planner_name == "improved_astar" && circumscribed_radius > 0.0)) {
         const double radius = inflation_radius > 0.0
             ? inflation_radius : circumscribed_radius;
         planning_map.inflateObstacles(radius);
@@ -200,7 +205,7 @@ int main(int argc, char** argv) {
 
     Costmap2D costmap;
     if (planner_name == "improved_astar") {
-        costmap.buildFromGridMap(map);
+        costmap.buildFromGridMap(planning_map);
         costmap.inflateObstacles(robot_radius);
     }
 
@@ -250,12 +255,29 @@ int main(int argc, char** argv) {
         const bool collision_free = footprint_name == "rectangle"
             ? collision_checker->isPosePathValid(makePoses(result.path))
             : collision_checker->isPathValid(result.path);
+        result.collision_free = collision_free;
         if (!collision_free) {
             result.success = false;
             result.path.clear();
             result.path_length = 0.0;
             result.message = "Path is not collision-free for the selected footprint.";
         }
+    }
+
+    if (result.success) {
+        std::vector<Point2i> obstacles;
+        obstacles.reserve(static_cast<std::size_t>(map.width() * map.height()));
+        for (int y = 0; y < map.height(); ++y) {
+            for (int x = 0; x < map.width(); ++x) {
+                if (map.isOccupied(x, y)) obstacles.push_back({x, y});
+            }
+        }
+        result.turning_count = computeTurningCount(result.path);
+        result.total_turning = computeTotalTurning(result.path);
+        result.average_curvature = computeAverageCurvature(result.path);
+        result.smoothness_score = computeSmoothnessScore(result.path);
+        result.minimum_obstacle_distance =
+            computeMinObstacleDistance(result.path, obstacles);
     }
 
     std::cout << (result.success ? "SUCCESS" : "FAIL")
