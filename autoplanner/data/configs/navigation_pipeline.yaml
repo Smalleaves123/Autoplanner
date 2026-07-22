@@ -12,8 +12,14 @@ planner:
   allow_diagonal: true
 controller:
   name: stanley
+robot:
+  footprint: point
+  inflate: false
 pipeline:
   max_steps: 2500
+smoothing:
+  name: shortcut
+  iterations: 100
 trajectory:
   sample_spacing: 0.5
   target_velocity: 1.0

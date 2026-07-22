@@ -16,6 +16,13 @@ void printHelp() {
         << "  --map PATH            occupancy grid map\n"
         << "  --planner NAME        planner name (default astar)\n"
         << "  --controller NAME     pid|pure_pursuit|stanley|mpc\n"
+        << "  --footprint NAME      point|circle|rectangle\n"
+        << "  --robot-radius N      circular footprint radius\n"
+        << "  --robot-length N      rectangular footprint length\n"
+        << "  --robot-width N       rectangular footprint width\n"
+        << "  --inflate             inflate planning map\n"
+        << "  --smooth NAME         none|shortcut\n"
+        << "  --smooth-iterations N smoothing iterations\n"
         << "  --start X Y           start cell\n"
         << "  --goal X Y            goal cell\n"
         << "  --max-steps N         controller execution limit\n"
@@ -33,8 +40,18 @@ int main(int argc, char** argv) {
     bool has_map = false;
     bool has_planner = false;
     bool has_controller = false;
+    bool has_footprint = false;
+    bool has_robot_radius = false;
+    bool has_robot_length = false;
+    bool has_robot_width = false;
+    bool has_inflate = false;
+    bool has_smoother = false;
+    bool has_smoothing_iterations = false;
     bool has_start = false;
     bool has_goal = false;
+    bool has_max_steps = false;
+    bool has_velocity = false;
+    bool has_dt = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -49,6 +66,27 @@ int main(int argc, char** argv) {
         } else if (arg == "--controller" && i + 1 < argc) {
             scenario.pipeline.controller = argv[++i];
             has_controller = true;
+        } else if (arg == "--footprint" && i + 1 < argc) {
+            scenario.pipeline.footprint = argv[++i];
+            has_footprint = true;
+        } else if (arg == "--robot-radius" && i + 1 < argc) {
+            scenario.pipeline.robot_radius = std::stod(argv[++i]);
+            has_robot_radius = true;
+        } else if (arg == "--robot-length" && i + 1 < argc) {
+            scenario.pipeline.robot_length = std::stod(argv[++i]);
+            has_robot_length = true;
+        } else if (arg == "--robot-width" && i + 1 < argc) {
+            scenario.pipeline.robot_width = std::stod(argv[++i]);
+            has_robot_width = true;
+        } else if (arg == "--inflate") {
+            scenario.pipeline.inflate_map = true;
+            has_inflate = true;
+        } else if (arg == "--smooth" && i + 1 < argc) {
+            scenario.pipeline.smoother = argv[++i];
+            has_smoother = true;
+        } else if (arg == "--smooth-iterations" && i + 1 < argc) {
+            scenario.pipeline.smoothing_iterations = std::stoi(argv[++i]);
+            has_smoothing_iterations = true;
         } else if (arg == "--start" && i + 2 < argc) {
             scenario.start = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             has_start = true;
@@ -58,11 +96,14 @@ int main(int argc, char** argv) {
         } else if (arg == "--max-steps" && i + 1 < argc) {
             scenario.pipeline.max_steps =
                 static_cast<std::size_t>(std::stoul(argv[++i]));
+            has_max_steps = true;
         } else if (arg == "--velocity" && i + 1 < argc) {
             scenario.pipeline.trajectory_options.target_velocity =
                 std::stod(argv[++i]);
+            has_velocity = true;
         } else if (arg == "--dt" && i + 1 < argc) {
             scenario.pipeline.simulation_options.dt = std::stod(argv[++i]);
+            has_dt = true;
         } else if (arg == "--output-dir" && i + 1 < argc) {
             output_dir = argv[++i];
         } else if (arg == "--help") {
@@ -79,6 +120,7 @@ int main(int argc, char** argv) {
         const std::string map_override = scenario.map_path;
         const std::string planner_override = scenario.pipeline.planner;
         const std::string controller_override = scenario.pipeline.controller;
+        const auto pipeline_override = scenario.pipeline;
         const auto start_override = scenario.start;
         const auto goal_override = scenario.goal;
         robotnav::ScenarioConfig loaded;
@@ -90,6 +132,25 @@ int main(int argc, char** argv) {
         if (has_map) scenario.map_path = map_override;
         if (has_planner) scenario.pipeline.planner = planner_override;
         if (has_controller) scenario.pipeline.controller = controller_override;
+        if (has_footprint) scenario.pipeline.footprint = pipeline_override.footprint;
+        if (has_robot_radius) scenario.pipeline.robot_radius =
+            pipeline_override.robot_radius;
+        if (has_robot_length) scenario.pipeline.robot_length =
+            pipeline_override.robot_length;
+        if (has_robot_width) scenario.pipeline.robot_width =
+            pipeline_override.robot_width;
+        if (has_inflate) scenario.pipeline.inflate_map =
+            pipeline_override.inflate_map;
+        if (has_smoother) scenario.pipeline.smoother =
+            pipeline_override.smoother;
+        if (has_smoothing_iterations) scenario.pipeline.smoothing_iterations =
+            pipeline_override.smoothing_iterations;
+        if (has_max_steps) scenario.pipeline.max_steps =
+            pipeline_override.max_steps;
+        if (has_velocity) scenario.pipeline.trajectory_options.target_velocity =
+            pipeline_override.trajectory_options.target_velocity;
+        if (has_dt) scenario.pipeline.simulation_options.dt =
+            pipeline_override.simulation_options.dt;
         if (has_start) scenario.start = start_override;
         if (has_goal) scenario.goal = goal_override;
     }

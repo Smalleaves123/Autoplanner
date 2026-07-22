@@ -59,11 +59,6 @@ def run_unified_pipeline(args, build_dir: Path, map_path: Path,
         print("Unified pipeline executable not found. Build the project first:",
               file=sys.stderr)
         return 1
-    if args.footprint != "point" or args.inflate or args.smooth != "none":
-        print("--engine unified currently requires point footprint, no inflation, "
-              "and --smooth none", file=sys.stderr)
-        return 1
-
     output_dir.mkdir(parents=True, exist_ok=True)
     max_steps = args.steps if args.steps is not None else 2500
     command = [
@@ -76,8 +71,16 @@ def run_unified_pipeline(args, build_dir: Path, map_path: Path,
         "--max-steps", str(max_steps),
         "--velocity", str(args.velocity),
         "--dt", str(args.dt),
+        "--footprint", args.footprint,
+        "--robot-radius", str(args.robot_radius),
+        "--robot-length", str(args.robot_length),
+        "--robot-width", str(args.robot_width),
+        "--smooth", args.smooth,
+        "--smooth-iterations", str(args.smooth_iterations),
         "--output-dir", str(output_dir),
     ]
+    if args.inflate:
+        command.append("--inflate")
     print("Running unified C++ navigation pipeline...")
     completed = subprocess.run(command, text=True)
     metrics_file = output_dir / "metrics.json"

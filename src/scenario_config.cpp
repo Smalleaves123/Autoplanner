@@ -20,6 +20,20 @@ bool loadScenarioConfig(const std::string& file_path,
     auto& pipeline = scenario.pipeline;
     pipeline.planner = loader.getString("planner.name", pipeline.planner);
     pipeline.controller = loader.getString("controller.name", pipeline.controller);
+    pipeline.footprint = loader.getString(
+        "robot.footprint", pipeline.footprint);
+    pipeline.smoother = loader.getString(
+        "smoothing.name", pipeline.smoother);
+    pipeline.robot_radius = loader.getDouble(
+        "robot.radius", pipeline.robot_radius);
+    pipeline.robot_length = loader.getDouble(
+        "robot.length", pipeline.robot_length);
+    pipeline.robot_width = loader.getDouble(
+        "robot.width", pipeline.robot_width);
+    pipeline.inflate_map = loader.getBool(
+        "robot.inflate", pipeline.inflate_map);
+    pipeline.smoothing_iterations = loader.getInt(
+        "smoothing.iterations", pipeline.smoothing_iterations);
     const int max_steps = loader.getInt(
         "pipeline.max_steps", static_cast<int>(pipeline.max_steps));
     if (max_steps < 0) return false;

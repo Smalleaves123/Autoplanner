@@ -20,8 +20,9 @@ bool finiteCommand(const autompc::Control& command) {
 }  // namespace
 
 SafetySupervisor::SafetySupervisor(const autoplanner::GridMap& map,
-                                   SafetyOptions options)
-    : map_(map), options_(options) {}
+                                   SafetyOptions options,
+                                   const autoplanner::CollisionChecker* collision_checker)
+    : map_(map), options_(options), collision_checker_(collision_checker) {}
 
 SafetyDecision SafetySupervisor::validateTrajectory(
     const autompc::Trajectory& trajectory) const {
@@ -68,8 +69,12 @@ SafetyDecision SafetySupervisor::validateState(
                 "state velocity exceeds configured limits"};
     }
     if (options_.enforce_collision) {
-        autoplanner::GridCollisionChecker checker(map_);
-        if (!checker.isStateValid({state.x, state.y})) {
+        const bool valid = collision_checker_
+            ? collision_checker_->isPoseValid(
+                {state.x, state.y, state.theta})
+            : autoplanner::GridCollisionChecker(map_).isStateValid(
+                {state.x, state.y});
+        if (!valid) {
             return {false, StatusCode::Collision,
                     "simulated state entered an occupied or out-of-bounds cell"};
         }

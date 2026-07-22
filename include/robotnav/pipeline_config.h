@@ -16,6 +16,14 @@ namespace robotnav {
 struct PipelineConfig {
     std::string planner = "astar";
     std::string controller = "stanley";
+    std::string footprint = "point";
+    std::string smoother = "none";
+
+    double robot_radius = 0.0;
+    double robot_length = 0.0;
+    double robot_width = 0.0;
+    bool inflate_map = false;
+    int smoothing_iterations = 100;
 
     autoplanner::PlannerFactoryOptions planner_options;
     autompc::TrajectoryOptions trajectory_options;

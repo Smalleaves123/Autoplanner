@@ -4,6 +4,7 @@
 
 #include "autompc/core/trajectory.h"
 #include "autompc/core/types.h"
+#include "autoplanner/collision/collision_checker.h"
 #include "autoplanner/core/grid_map.h"
 #include "robotnav/status.h"
 
@@ -29,7 +30,8 @@ struct SafetyDecision {
 class SafetySupervisor {
 public:
     SafetySupervisor(const autoplanner::GridMap& map,
-                     SafetyOptions options = {});
+                     SafetyOptions options = {},
+                     const autoplanner::CollisionChecker* collision_checker = nullptr);
 
     SafetyDecision validateTrajectory(const autompc::Trajectory& trajectory) const;
     SafetyDecision validateCommand(const autompc::Control& command) const;
@@ -43,6 +45,7 @@ public:
 private:
     const autoplanner::GridMap& map_;
     SafetyOptions options_;
+    const autoplanner::CollisionChecker* collision_checker_ = nullptr;
 };
 
 }  // namespace robotnav

@@ -12,8 +12,12 @@
 #include "autompc/controllers/mpc_controller.h"
 #endif
 #include "autompc/trajectory/trajectory_generator.h"
+#include "autoplanner/collision/footprint_collision_checker.h"
 #include "autoplanner/collision/grid_collision_checker.h"
+#include "autoplanner/costmap/costmap_2d.h"
+#include "autoplanner/core/path.h"
 #include "autoplanner/core/planner_factory.h"
+#include "autoplanner/smoothing/shortcut_smoother.h"
 
 namespace robotnav {
 namespace {
@@ -45,6 +49,20 @@ double crossTrackError(const autompc::State& state,
     return std::hypot(reference.x - state.x, reference.y - state.y);
 }
 
+std::vector<autoplanner::Pose2d> makePoses(
+    const autoplanner::Path2d& path) {
+    std::vector<autoplanner::Pose2d> poses;
+    poses.reserve(path.size());
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        const std::size_t next = std::min(i + 1, path.size() - 1);
+        const std::size_t previous = i == 0 ? i : i - 1;
+        const double dx = path[next].x - path[previous].x;
+        const double dy = path[next].y - path[previous].y;
+        poses.push_back({path[i].x, path[i].y, std::atan2(dy, dx)});
+    }
+    return poses;
+}
+
 std::string escapeJsonString(const std::string& value) {
     std::string escaped;
     for (const char character : value) {
@@ -74,6 +92,8 @@ PipelineResult NavigationPipeline::run(
     const PipelineConfig& config) const {
     PipelineResult result;
     result.metrics.status = StatusCode::InternalError;
+    result.metrics.footprint = config.footprint;
+    result.metrics.smoother = config.smoother;
 
     auto fail = [&result](StatusCode status, const std::string& message) {
         result.metrics.status = status;
@@ -97,14 +117,60 @@ PipelineResult NavigationPipeline::run(
                     "pipeline step configuration is invalid");
     }
 
+    autoplanner::RobotFootprint footprint;
+    double circumscribed_radius = 0.0;
+    if (config.footprint == "point") {
+        footprint = autoplanner::RobotFootprint::circle(0.0);
+    } else if (config.footprint == "circle" &&
+               std::isfinite(config.robot_radius) &&
+               config.robot_radius > 0.0) {
+        footprint = autoplanner::RobotFootprint::circle(config.robot_radius);
+        circumscribed_radius = config.robot_radius;
+    } else if (config.footprint == "rectangle" &&
+               std::isfinite(config.robot_length) &&
+               std::isfinite(config.robot_width) &&
+               config.robot_length > 0.0 && config.robot_width > 0.0) {
+        footprint = autoplanner::RobotFootprint::rectangle(
+            config.robot_length, config.robot_width);
+        circumscribed_radius = std::hypot(
+            0.5 * config.robot_length, 0.5 * config.robot_width);
+    } else {
+        return fail(StatusCode::InvalidConfiguration,
+                    "invalid robot footprint configuration");
+    }
+
+    autoplanner::GridMap planning_map = map;
+    if ((config.inflate_map || config.footprint != "point") &&
+        circumscribed_radius > 0.0) {
+        planning_map.inflateObstacles(circumscribed_radius);
+    }
+    if (config.footprint != "point" && !planning_map.isFree(start.x, start.y)) {
+        return fail(StatusCode::InvalidStart,
+                    "robot footprint makes the start cell invalid");
+    }
+    if (config.footprint != "point" && !planning_map.isFree(goal.x, goal.y)) {
+        return fail(StatusCode::InvalidGoal,
+                    "robot footprint makes the goal cell invalid");
+    }
+
+    autoplanner::Costmap2D costmap;
+    const autoplanner::Costmap2D* costmap_ptr = nullptr;
+    if (config.planner == "improved_astar") {
+        costmap.buildFromGridMap(planning_map);
+        costmap.inflateObstacles(
+            config.robot_radius > 0.0 ? config.robot_radius
+                                      : circumscribed_radius);
+        costmap_ptr = &costmap;
+    }
+
     auto planner = autoplanner::createPlanner(
-        config.planner, config.planner_options);
+        config.planner, config.planner_options, costmap_ptr);
     if (!planner) {
         return fail(StatusCode::InvalidConfiguration,
                     "unknown planner: " + config.planner);
     }
 
-    result.planning = planner->plan(map, start, goal);
+    result.planning = planner->plan(planning_map, start, goal);
     result.metrics.planning_time_ms = result.planning.planning_time_ms;
     result.metrics.path_length = result.planning.path_length;
     if (!result.planning.success || result.planning.path.empty()) {
@@ -114,9 +180,58 @@ PipelineResult NavigationPipeline::run(
                         : result.planning.message);
     }
 
-    autoplanner::GridCollisionChecker checker(map);
-    if (!checker.isPathValid(result.planning.path)) {
+    std::unique_ptr<autoplanner::CollisionChecker> collision_checker;
+    if (config.footprint == "point") {
+        collision_checker = std::make_unique<autoplanner::GridCollisionChecker>(
+            map);
+    } else {
+        collision_checker = std::make_unique<autoplanner::FootprintCollisionChecker>(
+            map, footprint);
+    }
+
+    const auto pathIsValid = [&]() {
+        if (config.footprint == "point") {
+            return collision_checker->isPathValid(result.planning.path);
+        }
+        return collision_checker->isPosePathValid(
+            makePoses(result.planning.path));
+    };
+    if (!pathIsValid()) {
         return fail(StatusCode::Collision, "planner returned a colliding path");
+    }
+
+    result.planning.collision_free = true;
+    result.metrics.collision_free = true;
+    if (config.smoother != "none") {
+        if (config.smoother != "shortcut" || config.smoothing_iterations < 0) {
+            return fail(StatusCode::InvalidConfiguration,
+                        "unsupported path smoother configuration");
+        }
+        std::unique_ptr<autoplanner::CollisionChecker> smoothing_checker;
+        autoplanner::CollisionChecker* checker_for_smoothing =
+            collision_checker.get();
+        if (config.footprint == "rectangle") {
+            // ShortcutSmoother only sees Point2d segments. Use the
+            // circumscribed circle during shortcutting so the result is safe
+            // for every possible rectangle heading; the exact pose-aware
+            // rectangle check below remains the final acceptance gate.
+            smoothing_checker =
+                std::make_unique<autoplanner::FootprintCollisionChecker>(
+                    map,
+                    autoplanner::RobotFootprint::circle(
+                        circumscribed_radius));
+            checker_for_smoothing = smoothing_checker.get();
+        }
+        autoplanner::ShortcutSmoother smoother(
+            *checker_for_smoothing, config.smoothing_iterations);
+        result.planning.path = smoother.smooth(result.planning.path);
+        if (!pathIsValid()) {
+            return fail(StatusCode::Collision,
+                        "smoothed path failed collision validation");
+        }
+        result.planning.path_length =
+            autoplanner::computePathLength(result.planning.path);
+        result.planning.message = "Path found and smoothed.";
     }
 
     autompc::Waypoints waypoints;
@@ -143,7 +258,7 @@ PipelineResult NavigationPipeline::run(
             safety_options.max_steering,
             config.simulation_options.max_steering);
     }
-    SafetySupervisor supervisor(map, safety_options);
+    SafetySupervisor supervisor(map, safety_options, collision_checker.get());
     const auto trajectory_decision = supervisor.validateTrajectory(result.trajectory);
     if (!trajectory_decision.safe) {
         return fail(trajectory_decision.status, trajectory_decision.message);
@@ -289,11 +404,17 @@ bool savePipelineMetricsJson(const PipelineResult& result,
            << escapeJsonString(result.message) << "\",\n"
            << "  \"planner\": \""
            << escapeJsonString(result.planning.planner_name) << "\",\n"
+           << "  \"footprint\": \""
+           << escapeJsonString(result.metrics.footprint) << "\",\n"
+           << "  \"smoother\": \""
+           << escapeJsonString(result.metrics.smoother) << "\",\n"
            << "  \"success\": "
            << (result.metrics.status == StatusCode::Success ? "true" : "false")
            << ",\n"
            << "  \"goal_reached\": "
            << (result.metrics.goal_reached ? "true" : "false") << ",\n"
+           << "  \"collision_free\": "
+           << (result.metrics.collision_free ? "true" : "false") << ",\n"
            << "  \"safe_stop\": "
            << (result.metrics.safe_stop ? "true" : "false") << ",\n"
            << "  \"controller_trace_steps\": " << result.metrics.steps << ",\n"

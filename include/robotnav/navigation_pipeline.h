@@ -14,6 +14,8 @@ namespace robotnav {
 
 struct PipelineMetrics {
     StatusCode status = StatusCode::InternalError;
+    std::string footprint = "point";
+    std::string smoother = "none";
     double planning_time_ms = 0.0;
     double path_length = 0.0;
     double trajectory_length = 0.0;
@@ -23,6 +25,7 @@ struct PipelineMetrics {
     double mean_heading_error = 0.0;
     double goal_distance = 0.0;
     std::size_t steps = 0;
+    bool collision_free = false;
     bool goal_reached = false;
     bool safe_stop = false;
 };

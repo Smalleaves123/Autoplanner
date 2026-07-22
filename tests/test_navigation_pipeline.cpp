@@ -53,6 +53,31 @@ TEST(NavigationPipelineTest, RunsPlanningTrackingAndTrace) {
     EXPECT_TRUE(std::isfinite(result.metrics.max_cross_track_error));
 }
 
+TEST(NavigationPipelineTest, SupportsRectangleFootprintAndSmoothing) {
+    const auto map = loadSimpleMap();
+    robotnav::PipelineConfig config;
+    config.planner = "astar";
+    config.controller = "stanley";
+    config.footprint = "rectangle";
+    config.robot_length = 0.8;
+    config.robot_width = 0.5;
+    config.inflate_map = true;
+    config.smoother = "shortcut";
+    config.smoothing_iterations = 100;
+    config.max_steps = 2500;
+
+    const robotnav::NavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {48, 48}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.collision_free);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_EQ(result.metrics.footprint, "rectangle");
+    EXPECT_EQ(result.metrics.smoother, "shortcut");
+}
+
 TEST(ScenarioConfigTest, LoadsPipelineValues) {
     const auto path = std::filesystem::temp_directory_path() /
                       "robotnav_pipeline_test.yaml";
@@ -71,6 +96,13 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "  name: dijkstra\n"
                << "controller:\n"
                << "  name: pid\n"
+               << "robot:\n"
+               << "  footprint: rectangle\n"
+               << "  length: 0.8\n"
+               << "  width: 0.5\n"
+               << "smoothing:\n"
+               << "  name: shortcut\n"
+               << "  iterations: 12\n"
                << "pipeline:\n"
                << "  max_steps: 123\n"
                << "safety:\n"
@@ -84,6 +116,11 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_EQ(scenario.goal, (autoplanner::Point2i{20, 21}));
     EXPECT_EQ(scenario.pipeline.planner, "dijkstra");
     EXPECT_EQ(scenario.pipeline.controller, "pid");
+    EXPECT_EQ(scenario.pipeline.footprint, "rectangle");
+    EXPECT_DOUBLE_EQ(scenario.pipeline.robot_length, 0.8);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.robot_width, 0.5);
+    EXPECT_EQ(scenario.pipeline.smoother, "shortcut");
+    EXPECT_EQ(scenario.pipeline.smoothing_iterations, 12);
     EXPECT_EQ(scenario.pipeline.max_steps, 123u);
     EXPECT_FALSE(scenario.pipeline.safety_options.enforce_collision);
 
