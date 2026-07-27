@@ -5,8 +5,7 @@ The script keeps the algorithms in C++ and uses Python only to orchestrate
 the experiment and combine machine-readable results.
 
 Usage from the repository root:
-    conda run --no-capture-output -n CV python \
-        autoplanner/scripts/run_navigation_pipeline.py \
+    python autoplanner/scripts/run_navigation_pipeline.py \
         --build_dir build \
         --map autoplanner/data/maps/simple_50x50.txt \
         --planner improved_astar --controller stanley --plot

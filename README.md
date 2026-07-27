@@ -109,6 +109,25 @@ python autoplanner/scripts/launch_dashboard.py
 
 It opens at `http://localhost:8501`.
 
+### Reproducible scenario regression
+
+Dashboard YAML scenes can be executed without the web UI. The zero-argument
+command runs a bundled dynamic prediction example and writes a CSV ledger with
+the decision, velocity scale, replanning count, safety result, and output path.
+
+```bash
+python autoplanner/scripts/run_saved_scenarios.py
+```
+
+Run one or more saved scenes repeatedly for a local regression batch:
+
+```bash
+python autoplanner/scripts/run_saved_scenarios.py \
+    --scene autoplanner/results/dashboard/scenes/loading_bay.yaml \
+    --scene autoplanner/results/dashboard/scenes/crossing.yaml \
+    --repeat 3 --plot
+```
+
 ```bash
 python autoplanner/scripts/run_all_experiments.py \
     --build_dir build \
