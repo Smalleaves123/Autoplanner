@@ -91,8 +91,11 @@ python autompc/scripts/plot_tracking.py
 
 The ROS-free Streamlit dashboard selects maps, planners, controllers, start
 and goal cells, then runs the existing C++ pipeline and displays its trace,
-metrics, and plot. Dynamic mode can inject a predicted moving-obstacle
-trajectory to exercise D* Lite replanning.
+metrics, and plot. Its point-and-click editor adds/removes occupancy cells or
+sets start/goal cells; saved YAML scenes contain the complete grid and remain
+portable across machines. Dynamic mode converts a predicted constant-velocity
+obstacle trajectory into a monitor, slower D* Lite replan, or pre-flight safe
+stop decision.
 
 Install the optional dashboard dependency once:
 

@@ -27,6 +27,7 @@ void printHelp() {
         << "  --robot-width N       rectangular footprint width\n"
         << "  --inflate             inflate planning map\n"
         << "  --smooth NAME         none|shortcut\n"
+        << "  --velocity N          target trajectory velocity\n"
         << "  --frames N            dynamic obstacle update frames\n"
         << "  --steps-per-frame N   control cycles per frame\n"
         << "  --obstacle-ahead N    path samples before inserted obstacle\n"
@@ -58,6 +59,7 @@ int main(int argc, char** argv) {
     bool has_width = false;
     bool has_inflate = false;
     bool has_smoother = false;
+    bool has_velocity = false;
     std::string map_override;
     autoplanner::Point2i start_override;
     autoplanner::Point2i goal_override;
@@ -69,6 +71,7 @@ int main(int argc, char** argv) {
     double width_override = 0.0;
     bool inflate_override = false;
     std::string smoother_override;
+    double velocity_override = 0.0;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
     std::vector<robotnav::MovingObstacle> moving_obstacles;
 
@@ -112,6 +115,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--smooth" && i + 1 < argc) {
             smoother_override = argv[++i];
             has_smoother = true;
+        } else if (arg == "--velocity" && i + 1 < argc) {
+            velocity_override = std::stod(argv[++i]);
+            has_velocity = true;
         } else if (arg == "--frames" && i + 1 < argc) {
             dynamic.frames = static_cast<std::size_t>(std::stoul(argv[++i]));
         } else if (arg == "--steps-per-frame" && i + 1 < argc) {
@@ -182,6 +188,9 @@ int main(int argc, char** argv) {
     if (has_width) scenario.pipeline.robot_width = width_override;
     if (has_inflate) scenario.pipeline.inflate_map = inflate_override;
     if (has_smoother) scenario.pipeline.smoother = smoother_override;
+    if (has_velocity) {
+        scenario.pipeline.trajectory_options.target_velocity = velocity_override;
+    }
 
     dynamic.pipeline = scenario.pipeline;
     dynamic.obstacle_updates = std::move(obstacle_updates);

@@ -29,6 +29,8 @@ tools = [
 ]
 dashboard = [
     "matplotlib>=3.7",
+    "plotly>=5.20",
+    "pyyaml>=6.0",
     "streamlit>=1.37",
 ]
 simulation = [
