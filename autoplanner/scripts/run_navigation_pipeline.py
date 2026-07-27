@@ -149,10 +149,88 @@ def run_unified_pipeline(args, build_dir: Path, map_path: Path,
     return 0
 
 
+def run_dynamic_pipeline(args, build_dir: Path, map_path: Path,
+                         output_dir: Path) -> int:
+    """Run the dynamic C++ pipeline and optionally render its trace."""
+    pipeline_cli = build_dir / "apps" / "dynamic_navigation_pipeline_cli"
+    if not pipeline_cli.exists():
+        print("Dynamic pipeline executable not found. Build the project first:",
+              file=sys.stderr)
+        return 1
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    command = [
+        str(pipeline_cli),
+        "--map", str(map_path),
+        "--planner", args.planner,
+        "--controller", args.controller,
+        "--start", str(args.start[0]), str(args.start[1]),
+        "--goal", str(args.goal[0]), str(args.goal[1]),
+        "--footprint", args.footprint,
+        "--robot-radius", str(args.robot_radius),
+        "--robot-length", str(args.robot_length),
+        "--robot-width", str(args.robot_width),
+        "--smooth", args.smooth,
+        "--frames", str(args.frames),
+        "--steps-per-frame", str(args.steps_per_frame),
+        "--obstacle-ahead", str(args.obstacle_ahead),
+        "--obstacle-margin", str(args.obstacle_margin),
+        "--max-auto-obstacles", str(args.max_auto_obstacles),
+        "--output-dir", str(output_dir),
+    ]
+    if args.inflate:
+        command.append("--inflate")
+    if args.no_diagonal:
+        command.append("--no-diagonal")
+    if args.no_auto_obstacles:
+        command.append("--no-auto-obstacles")
+    for frame, x, y in args.obstacle:
+        command += ["--obstacle", str(frame), str(x), str(y)]
+    for frame, x, y in args.clear_obstacle:
+        command += ["--clear-obstacle", str(frame), str(x), str(y)]
+    for start, end, x, y, dx, dy in args.moving_obstacle:
+        command += [
+            "--moving-obstacle", str(start), str(end), str(x), str(y),
+            str(dx), str(dy),
+        ]
+
+    print("Running dynamic C++ navigation pipeline...")
+    completed = subprocess.run(command, text=True)
+    metrics_file = output_dir / "metrics.json"
+    trace_file = output_dir / "trace.csv"
+    if completed.returncode != 0 or not metrics_file.exists() or not trace_file.exists():
+        print("Dynamic pipeline failed; see the C++ output above.",
+              file=sys.stderr)
+        return completed.returncode or 2
+
+    plot_file = None
+    if args.plot:
+        plot_file = render_plot(
+            args, map_path, trace_file, metrics_file, output_dir,
+            "RobotNav Dynamic Navigation")
+        if plot_file is None:
+            return 4
+
+    summary = {
+        "engine": "dynamic",
+        "pipeline": read_json(metrics_file),
+        "trace_csv": str(trace_file),
+    }
+    if plot_file is not None:
+        summary["plot_png"] = str(plot_file)
+    summary_file = output_dir / "summary.json"
+    with summary_file.open("w") as stream:
+        json.dump(summary, stream, indent=2)
+        stream.write("\n")
+    print(f"Pipeline complete: {output_dir}")
+    print(f"Summary: {summary_file}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run AutoPlanner to AutoMPC")
     parser.add_argument("--build_dir", default="build")
-    parser.add_argument("--engine", choices=("legacy", "unified"),
+    parser.add_argument("--engine", choices=("legacy", "unified", "dynamic"),
                         default="legacy")
     parser.add_argument("--map", default="autoplanner/data/maps/simple_50x50.txt")
     parser.add_argument("--planner", default="improved_astar")
@@ -177,9 +255,27 @@ def main() -> int:
     parser.add_argument("--robot-length", type=float, default=0.0)
     parser.add_argument("--robot-width", type=float, default=0.0)
     parser.add_argument("--inflate", action="store_true")
+    parser.add_argument("--no-diagonal", action="store_true",
+                        help="use 4-connected graph search where supported")
     parser.add_argument("--weight", type=float, default=1.5)
     parser.add_argument("--smooth", choices=("none", "shortcut"), default="shortcut")
     parser.add_argument("--smooth-iterations", type=int, default=100)
+    parser.add_argument("--frames", type=int, default=20,
+                        help="dynamic pipeline update frames")
+    parser.add_argument("--steps-per-frame", type=int, default=40,
+                        help="dynamic pipeline control cycles per frame")
+    parser.add_argument("--obstacle-ahead", type=int, default=5,
+                        help="dynamic auto-obstacle path samples ahead")
+    parser.add_argument("--obstacle-margin", type=int, default=1,
+                        help="dynamic auto-obstacle safety margin in cells")
+    parser.add_argument("--max-auto-obstacles", type=int, default=1)
+    parser.add_argument("--no-auto-obstacles", action="store_true")
+    parser.add_argument("--obstacle", nargs=3, type=int, action="append",
+                        default=[], metavar=("FRAME", "X", "Y"))
+    parser.add_argument("--clear-obstacle", nargs=3, type=int, action="append",
+                        default=[], metavar=("FRAME", "X", "Y"))
+    parser.add_argument("--moving-obstacle", nargs=6, type=int, action="append",
+                        default=[], metavar=("START", "END", "X", "Y", "DX", "DY"))
     parser.add_argument("--plot", action="store_true",
                         help="write a navigation.png visual summary")
     parser.add_argument("--plot-output",
@@ -192,6 +288,8 @@ def main() -> int:
     output_dir = resolve_path(args.output_dir)
     if args.engine == "unified":
         return run_unified_pipeline(args, build_dir, map_path, output_dir)
+    if args.engine == "dynamic":
+        return run_dynamic_pipeline(args, build_dir, map_path, output_dir)
 
     planning_dir = output_dir / "planning"
     tracking_csv = output_dir / "tracking.csv"
@@ -227,6 +325,8 @@ def main() -> int:
                         "--robot-width", str(args.robot_width)]
     if args.inflate:
         planner_cmd.append("--inflate")
+    if args.no_diagonal:
+        planner_cmd.append("--no-diagonal")
     if args.smooth != "none":
         planner_cmd += ["--smooth", args.smooth,
                         "--smooth-iterations", str(args.smooth_iterations)]

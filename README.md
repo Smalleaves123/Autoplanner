@@ -224,15 +224,18 @@ also overlays its planner path and controller reference trajectory.
 The dynamic pipeline adds automatic obstacle updates, D* Lite incremental
 replanning, optional A* timing comparison, controller reset/reference
 continuation, safety supervision, and `trace.csv`/`metrics.json` artifacts.
-It is also ROS-free. A compact local smoke scenario is:
+It is also ROS-free. Run it through the same Python entry point to create
+`navigation.png` automatically:
 
 ```bash
-./build/apps/dynamic_navigation_pipeline_cli \
-    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
-    --start 1 1 --goal 20 20 \
-    --controller stanley --frames 20 --steps-per-frame 40 \
+conda run --no-capture-output -n CV python \
+    autoplanner/scripts/run_navigation_pipeline.py \
+    --engine dynamic --build_dir build \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --start 1 1 --goal 20 20 --planner astar --controller stanley \
+    --smooth shortcut --frames 20 --steps-per-frame 40 \
     --obstacle-ahead 15 --obstacle-margin 1 --max-auto-obstacles 1 \
-    --output-dir /tmp/robotnav-dynamic
+    --output_dir /tmp/robotnav-dynamic --plot
 ```
 
 The expected report has `status_code: "success"`,
@@ -247,15 +250,17 @@ For externally driven updates, repeat `--obstacle FRAME X Y` (or use
 `--no-auto-obstacles`:
 
 ```bash
-./build/apps/dynamic_navigation_pipeline_cli \
-    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+conda run --no-capture-output -n CV python \
+    autoplanner/scripts/run_navigation_pipeline.py \
+    --engine dynamic --build_dir build \
+    --map autoplanner/data/maps/simple_50x50.txt \
     --start 1 1 --goal 20 20 --controller stanley --smooth none \
     --frames 20 --steps-per-frame 40 --no-auto-obstacles \
-    --obstacle 1 3 10 --output-dir /tmp/robotnav-external-dynamic
+    --obstacle 1 3 10 --output_dir /tmp/robotnav-external-dynamic --plot
 ```
 
-When invoking the dynamic C++ CLI directly, use the same visualizer on its
-existing trace artifacts:
+When invoking the lower-level dynamic C++ CLI directly, use the same
+visualizer on its existing trace artifacts:
 
 ```bash
 conda run --no-capture-output -n CV python \
