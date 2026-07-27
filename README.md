@@ -205,13 +205,19 @@ The existing Python orchestrator can select this unified C++ engine while
 keeping its legacy planner/tracker mode available:
 
 ```bash
-python3 autoplanner/scripts/run_navigation_pipeline.py \
+conda run --no-capture-output -n CV python \
+    autoplanner/scripts/run_navigation_pipeline.py \
     --engine unified \
     --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
     --planner astar --controller stanley \
-    --smooth none
+    --smooth none --plot
 ```
+
+`--plot` integrates visualization into the existing pipeline: it writes
+`navigation.png` beside `trace.csv`, `metrics.json`, and `summary.json`; the
+summary records `plot_png`. The legacy pipeline supports the same switch and
+also overlays its planner path and controller reference trajectory.
 
 ### Dynamic replanning
 
@@ -248,7 +254,8 @@ For externally driven updates, repeat `--obstacle FRAME X Y` (or use
     --obstacle 1 3 10 --output-dir /tmp/robotnav-external-dynamic
 ```
 
-Trace outputs can be visualized over the occupancy grid:
+When invoking the dynamic C++ CLI directly, use the same visualizer on its
+existing trace artifacts:
 
 ```bash
 conda run --no-capture-output -n CV python \

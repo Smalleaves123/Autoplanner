@@ -5,11 +5,11 @@ The script keeps the algorithms in C++ and uses Python only to orchestrate
 the experiment and combine machine-readable results.
 
 Usage from the repository root:
-    python3 autoplanner/scripts/run_navigation_pipeline.py \
+    conda run --no-capture-output -n CV python \
+        autoplanner/scripts/run_navigation_pipeline.py \
         --build_dir build \
         --map autoplanner/data/maps/simple_50x50.txt \
-        --planner improved_astar \
-        --controller stanley
+        --planner improved_astar --controller stanley --plot
 """
 import argparse
 import json
@@ -51,6 +51,42 @@ def read_json(path: Path) -> dict:
         return json.load(f)
 
 
+def plot_output_path(args, output_dir: Path) -> Path:
+    if not args.plot_output:
+        return output_dir / "navigation.png"
+    path = Path(args.plot_output).expanduser()
+    return path if path.is_absolute() else output_dir / path
+
+
+def render_plot(args, map_path: Path, trace_file: Path, metrics_file: Path,
+                output_dir: Path, title: str,
+                planned_path: Path | None = None) -> Path | None:
+    plotter = SCRIPT_DIR / "visualize_navigation_trace.py"
+    if not plotter.exists():
+        print(f"Visualization script not found: {plotter}", file=sys.stderr)
+        return None
+
+    output = plot_output_path(args, output_dir)
+    command = [
+        sys.executable,
+        str(plotter),
+        "--map", str(map_path),
+        "--trace", str(trace_file),
+        "--metrics", str(metrics_file),
+        "--output", str(output),
+        "--title", title,
+    ]
+    if planned_path is not None and planned_path.exists():
+        command += ["--path", str(planned_path)]
+    print("Rendering navigation plot...")
+    completed = subprocess.run(command, text=True)
+    if completed.returncode != 0 or not output.exists():
+        print("Visualization failed; see the Python output above.",
+              file=sys.stderr)
+        return None
+    return output
+
+
 def run_unified_pipeline(args, build_dir: Path, map_path: Path,
                          output_dir: Path) -> int:
     """Run the reusable C++ pipeline while preserving the legacy runner."""
@@ -89,13 +125,24 @@ def run_unified_pipeline(args, build_dir: Path, map_path: Path,
         print("Unified pipeline failed; see the C++ output above.", file=sys.stderr)
         return completed.returncode or 2
 
+    plot_file = None
+    if args.plot:
+        plot_file = render_plot(
+            args, map_path, trace_file, metrics_file, output_dir,
+            "RobotNav Unified Navigation")
+        if plot_file is None:
+            return 4
+
     summary_file = output_dir / "summary.json"
+    summary = {
+        "engine": "unified",
+        "pipeline": read_json(metrics_file),
+        "trace_csv": str(trace_file),
+    }
+    if plot_file is not None:
+        summary["plot_png"] = str(plot_file)
     with summary_file.open("w") as stream:
-        json.dump({
-            "engine": "unified",
-            "pipeline": read_json(metrics_file),
-            "trace_csv": str(trace_file),
-        }, stream, indent=2)
+        json.dump(summary, stream, indent=2)
         stream.write("\n")
     print(f"Pipeline complete: {output_dir}")
     print(f"Summary: {summary_file}")
@@ -133,6 +180,10 @@ def main() -> int:
     parser.add_argument("--weight", type=float, default=1.5)
     parser.add_argument("--smooth", choices=("none", "shortcut"), default="shortcut")
     parser.add_argument("--smooth-iterations", type=int, default=100)
+    parser.add_argument("--plot", action="store_true",
+                        help="write a navigation.png visual summary")
+    parser.add_argument("--plot-output",
+                        help="PNG path relative to --output_dir, or absolute")
     parser.add_argument("--output_dir", default="results/navigation_pipeline")
     args = parser.parse_args()
 
@@ -226,6 +277,14 @@ def main() -> int:
         print("Tracking failed; see the tracker output above.", file=sys.stderr)
         return tracking.returncode or 3
 
+    plot_file = None
+    if args.plot:
+        plot_file = render_plot(
+            args, map_path, tracking_csv, tracking_metrics, output_dir,
+            "RobotNav Legacy Navigation", path_file)
+        if plot_file is None:
+            return 4
+
     summary = {
         "planner": read_json(planning_metrics_file),
         "tracking": read_json(tracking_metrics),
@@ -233,6 +292,8 @@ def main() -> int:
         "tracking_steps": steps,
         "trajectory_csv": str(trajectory_csv),
     }
+    if plot_file is not None:
+        summary["plot_png"] = str(plot_file)
     summary_file = output_dir / "summary.json"
     with summary_file.open("w") as f:
         json.dump(summary, f, indent=2)

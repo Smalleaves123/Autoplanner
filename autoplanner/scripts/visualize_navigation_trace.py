@@ -32,6 +32,14 @@ def parse_float(row, key, default=np.nan):
     return float(value)
 
 
+def first_available_float(row, keys, default=np.nan):
+    for key in keys:
+        value = row.get(key, "")
+        if value != "":
+            return float(value)
+    return default
+
+
 def load_trace(path):
     with open(path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -45,22 +53,35 @@ def load_trace(path):
             "replanned": np.array([], dtype=bool),
             "obstacle_x": np.array([]),
             "obstacle_y": np.array([]),
+            "reference_x": np.array([]),
+            "reference_y": np.array([]),
+            "has_time": False,
         }
 
     return {
-        "x": np.array([parse_float(row, "x") for row in rows]),
-        "y": np.array([parse_float(row, "y") for row in rows]),
+        "x": np.array(
+            [first_available_float(row, ("x", "x_actual")) for row in rows]
+        ),
+        "y": np.array(
+            [first_available_float(row, ("y", "y_actual")) for row in rows]
+        ),
         "time": np.array(
             [parse_float(row, "time", index) for index, row in enumerate(rows)]
         ),
         "cross_track_error": np.array(
-            [parse_float(row, "cross_track_error") for row in rows]
+            [
+                first_available_float(row, ("cross_track_error", "cross_track"))
+                for row in rows
+            ]
         ),
         "replanned": np.array(
             [row.get("replanned", "0") in {"1", "true", "True"} for row in rows]
         ),
         "obstacle_x": np.array([parse_float(row, "obstacle_x") for row in rows]),
         "obstacle_y": np.array([parse_float(row, "obstacle_y") for row in rows]),
+        "reference_x": np.array([parse_float(row, "x_ref") for row in rows]),
+        "reference_y": np.array([parse_float(row, "y_ref") for row in rows]),
+        "has_time": "time" in rows[0],
     }
 
 
@@ -99,6 +120,26 @@ def finite_points(x_values, y_values):
         & (y_values >= 0)
     )
     return x_values[mask], y_values[mask]
+
+
+def infer_cross_track_error(trace):
+    errors = trace["cross_track_error"].copy()
+    missing = ~np.isfinite(errors)
+    if not missing.any():
+        return errors
+    actual_x, actual_y = trace["x"], trace["y"]
+    reference_x, reference_y = trace["reference_x"], trace["reference_y"]
+    valid_reference = (
+        np.isfinite(actual_x)
+        & np.isfinite(actual_y)
+        & np.isfinite(reference_x)
+        & np.isfinite(reference_y)
+    )
+    errors[missing & valid_reference] = np.hypot(
+        actual_x[missing & valid_reference] - reference_x[missing & valid_reference],
+        actual_y[missing & valid_reference] - reference_y[missing & valid_reference],
+    )
+    return errors
 
 
 def metric_summary(metrics):
@@ -157,6 +198,20 @@ def main():
             zorder=2,
         )
 
+    reference_x, reference_y = finite_points(
+        trace["reference_x"], trace["reference_y"]
+    )
+    if reference_x.size:
+        map_ax.plot(
+            reference_x,
+            reference_y,
+            color="#2ca02c",
+            linestyle=":",
+            linewidth=1.4,
+            label="reference trajectory",
+            zorder=2,
+        )
+
     if trace["x"].size:
         map_ax.plot(
             trace["x"],
@@ -209,11 +264,12 @@ def main():
                 zorder=4,
             )
 
-        valid_error = np.isfinite(trace["cross_track_error"])
+        cross_track_error = infer_cross_track_error(trace)
+        valid_error = np.isfinite(cross_track_error)
         if valid_error.any():
             error_ax.plot(
                 trace["time"][valid_error],
-                trace["cross_track_error"][valid_error],
+                cross_track_error[valid_error],
                 color="#d62728",
                 linewidth=1.5,
             )
@@ -227,7 +283,7 @@ def main():
     map_ax.set_aspect("equal")
 
     error_ax.set_title("Tracking Error")
-    error_ax.set_xlabel("time")
+    error_ax.set_xlabel("time" if trace["has_time"] else "sample")
     error_ax.grid(True, alpha=0.25)
     handles, labels = map_ax.get_legend_handles_labels()
     if handles:
