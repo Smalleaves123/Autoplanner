@@ -254,8 +254,8 @@ def main() -> int:
                         default="point")
     parser.add_argument("--robot-length", type=float, default=0.0)
     parser.add_argument("--robot-width", type=float, default=0.0)
-    parser.add_argument("--inflate", action="store_true")
-    parser.add_argument("--no-diagonal", action="store_true",
+    parser.add_argument("--inflate", action="store_true", default=False)
+    parser.add_argument("--no-diagonal", action="store_true", default=False,
                         help="use 4-connected graph search where supported")
     parser.add_argument("--weight", type=float, default=1.5)
     parser.add_argument("--smooth", choices=("none", "shortcut"), default="shortcut")
@@ -269,14 +269,14 @@ def main() -> int:
     parser.add_argument("--obstacle-margin", type=int, default=1,
                         help="dynamic auto-obstacle safety margin in cells")
     parser.add_argument("--max-auto-obstacles", type=int, default=1)
-    parser.add_argument("--no-auto-obstacles", action="store_true")
+    parser.add_argument("--no-auto-obstacles", action="store_true", default=False)
     parser.add_argument("--obstacle", nargs=3, type=int, action="append",
                         default=[], metavar=("FRAME", "X", "Y"))
     parser.add_argument("--clear-obstacle", nargs=3, type=int, action="append",
                         default=[], metavar=("FRAME", "X", "Y"))
     parser.add_argument("--moving-obstacle", nargs=6, type=int, action="append",
                         default=[], metavar=("START", "END", "X", "Y", "DX", "DY"))
-    parser.add_argument("--plot", action="store_true",
+    parser.add_argument("--plot", action="store_true", default=False,
                         help="write a navigation.png visual summary")
     parser.add_argument("--plot-output",
                         help="PNG path relative to --output_dir, or absolute")

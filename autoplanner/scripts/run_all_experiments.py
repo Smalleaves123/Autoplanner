@@ -249,7 +249,7 @@ def main() -> int:
     parser.add_argument("--dynamic-frames", type=int, default=5)
     parser.add_argument("--dynamic-controller", choices=("stanley", "mpc"),
                         default="mpc")
-    parser.add_argument("--skip-dynamic", action="store_true")
+    parser.add_argument("--skip-dynamic", action="store_true", default=False)
     parser.add_argument("--velocity", type=float, default=1.0)
     parser.add_argument("--dt", type=float, default=0.05)
     parser.add_argument("--sample-spacing", type=float, default=0.5)

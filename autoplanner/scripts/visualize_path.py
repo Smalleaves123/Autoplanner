@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Visualize a planned path overlaid on the grid map."""
 import argparse
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -25,9 +26,12 @@ def load_path(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--map', required=True)
-    ap.add_argument('--path', required=True)
-    ap.add_argument('--output', default='path_vis.png')
+    ap.add_argument('--map', default='autoplanner/data/maps/simple_50x50.txt',
+                    help='Grid map file (default: bundled simple map)')
+    ap.add_argument('--path', default='autoplanner/data/demos/planned_path.csv',
+                    help='Planner path CSV (default: bundled demo path)')
+    ap.add_argument('--output',
+                    default='autoplanner/results/images/path_visualization.png')
     args = ap.parse_args()
 
     grid = load_map(args.map)
@@ -44,9 +48,11 @@ def main():
 
     ax.legend()
     ax.set_title('Path Visualization')
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
-    plt.savefig(args.output, dpi=150)
-    print(f'Saved: {args.output}')
+    plt.savefig(output, dpi=150)
+    print(f'Saved: {output}')
 
 if __name__ == '__main__':
     main()

@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """Generate a warehouse-style map with shelf aisles."""
 import argparse
+from pathlib import Path
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--width', type=int, default=100)
     ap.add_argument('--height', type=int, default=100)
     ap.add_argument('--aisle_width', type=int, default=2)
-    ap.add_argument('--output', required=True)
+    ap.add_argument('--output',
+                    default='autoplanner/results/generated_warehouse_map.txt',
+                    help='output map path')
     args = ap.parse_args()
 
     w, h = args.width, args.height
     aisle = args.aisle_width
 
-    with open(args.output, 'w') as f:
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open('w') as f:
         for y in range(h):
             row = ['0'] * w
             # Border
@@ -35,7 +40,7 @@ def main():
                             continue
                         row[x] = '1'
             f.write(''.join(row) + '\n')
-    print(f'Generated warehouse map: {args.output}')
+    print(f'Generated warehouse map: {output_path}')
 
 if __name__ == '__main__':
     main()

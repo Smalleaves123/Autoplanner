@@ -1,0 +1,7 @@
+{
+  "goal_reached": true,
+  "replanning_count": 1,
+  "collision_steps": 0,
+  "safe_stop": false,
+  "steps": 8
+}

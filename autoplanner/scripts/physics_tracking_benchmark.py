@@ -263,7 +263,7 @@ def main() -> int:
                         default="racecar")
     parser.add_argument("--controller", choices=("stanley", "mpc"),
                         default="stanley")
-    parser.add_argument("--path")
+    parser.add_argument("--path", default=None)
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--map", default="autoplanner/data/maps/simple_50x50.txt")
     parser.add_argument("--planner", default="improved_astar")

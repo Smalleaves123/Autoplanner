@@ -164,16 +164,31 @@ def metric_summary(metrics):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--map", required=True, help="occupancy grid txt map")
-    parser.add_argument(
-        "--trace", required=True, help="trace.csv from a RobotNav pipeline"
+    parser = argparse.ArgumentParser(
+        description="Render a navigation trace; runs on the bundled physics demo by default."
     )
     parser.add_argument(
-        "--path", help="optional planned path CSV to overlay on the map"
+        "--map", default="autoplanner/data/maps/simple_50x50.txt",
+        help="occupancy grid txt map"
     )
-    parser.add_argument("--metrics", help="optional metrics.json")
-    parser.add_argument("--output", default="navigation_trace.png")
+    parser.add_argument(
+        "--trace",
+        default="autoplanner/data/demos/navigation_trace.csv",
+        help="trace.csv from a RobotNav pipeline"
+    )
+    parser.add_argument(
+        "--path", default="autoplanner/data/demos/planned_path.csv",
+        help="optional planned path CSV to overlay on the map"
+    )
+    parser.add_argument(
+        "--metrics",
+        default="autoplanner/data/demos/navigation_metrics.json",
+        help="optional metrics.json"
+    )
+    parser.add_argument(
+        "--output",
+        default="autoplanner/results/physics_dynamic/navigation_trace.png"
+    )
     parser.add_argument("--title", default="RobotNav Trace")
     args = parser.parse_args()
 

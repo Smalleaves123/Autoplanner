@@ -4,8 +4,8 @@ import argparse, os, pandas as pd, matplotlib.pyplot as plt, numpy as np
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--csv', default='results/benchmark/ablation.csv')
-    ap.add_argument('--output_dir', default='docs/images')
+    ap.add_argument('--csv', default='autoplanner/data/demos/ablation.csv')
+    ap.add_argument('--output_dir', default='autoplanner/results/demo_images')
     args = ap.parse_args()
 
     df = pd.read_csv(args.csv)

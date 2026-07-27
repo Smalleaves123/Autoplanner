@@ -78,6 +78,20 @@ conda run --no-capture-output -n CV python -u \
 Python is used for experiment orchestration and analysis; the planning and
 tracking core remains C++. From the repository root:
 
+### Zero-argument utility demos
+
+Every Python utility has runnable defaults. Plotting and reporting helpers use
+the versioned samples in `autoplanner/data/demos`, while generated outputs are
+written below `autoplanner/results`.
+
+```bash
+conda run --no-capture-output -n CV python autoplanner/scripts/visualize_path.py
+conda run --no-capture-output -n CV python autoplanner/scripts/visualize_navigation_trace.py
+conda run --no-capture-output -n CV python autoplanner/scripts/plot_benchmark.py
+conda run --no-capture-output -n CV python autoplanner/scripts/make_gif.py
+conda run --no-capture-output -n CV python autompc/scripts/plot_tracking.py
+```
+
 ```bash
 python3 autoplanner/scripts/run_all_experiments.py \
     --build_dir build \

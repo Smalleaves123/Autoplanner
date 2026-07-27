@@ -7,8 +7,11 @@ import numpy as np
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--csv', required=True, help='benchmark CSV file')
-    ap.add_argument('--output_dir', default='results/images')
+    ap.add_argument('--csv',
+                    default='autoplanner/data/demos/planning_results.csv',
+                    help='benchmark CSV file (default: bundled demo result)')
+    ap.add_argument('--output_dir',
+                    default='autoplanner/results/benchmark/demo_images')
     args = ap.parse_args()
 
     df = pd.read_csv(args.csv)

@@ -95,14 +95,18 @@ def planning_report(rows: list[dict]) -> list[str]:
         maps = sorted({row.get("map", "unknown") for row in successful})
         pivot = []
         for planner in sorted(grouped):
-            pivot.append([planner] + [
-                f"{mean([row for row in successful
-                         if row.get('planner') == planner and row.get('map') == map_name],
-                        'planning_time_ms'):.4f}"
-                if any(row.get("planner") == planner and row.get("map") == map_name
-                       for row in successful) else "-"
-                for map_name in maps
-            ])
+            row = [planner]
+            for map_name in maps:
+                matching = [
+                    result for result in successful
+                    if (result.get("planner") == planner
+                        and result.get("map") == map_name)
+                ]
+                row.append(
+                    f"{mean(matching, 'planning_time_ms'):.4f}"
+                    if matching else "-"
+                )
+            pivot.append(row)
         lines.append(format_table(["Planner", *maps], pivot))
     return lines
 
@@ -138,6 +142,11 @@ def dynamic_report(rows: list[dict]) -> list[str]:
                  row.get("controller", "unknown"))].append(row)
     table = []
     for (map_name, controller), group in sorted(grouped.items()):
+        completion_rate = 100.0 * statistics.fmean(
+            as_float(row, "frames_run")
+            / max(as_float(row, "frames_requested"), 1.0)
+            for row in group
+        )
         table.append([
             map_name, controller, len(group),
             f"{mean(group, 'replanning_count'):.2f}",
@@ -145,10 +154,7 @@ def dynamic_report(rows: list[dict]) -> list[str]:
             f"{mean(group, 'astar_total_time_ms'):.4f}",
             f"{mean(group, 'dstar_over_astar_speedup'):.2f}",
             f"{mean(group, 'mean_replan_steering_delta'):.4f}",
-            f"{100.0 * statistics.fmean(
-                as_float(r, 'frames_run') /
-                max(as_float(r, 'frames_requested'), 1.0)
-                for r in group):.1f}%",
+            f"{completion_rate:.1f}%",
         ])
     return ["", "=== Dynamic replanning benchmark ===", "",
             format_table(["Map", "Controller", "Runs", "Replans",
@@ -158,7 +164,10 @@ def dynamic_report(rows: list[dict]) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare RobotNav benchmark CSVs")
-    parser.add_argument("results", help="CSV file or benchmark output directory")
+    parser.add_argument(
+        "results", nargs="?", default="autoplanner/data/demos/planning_results.csv",
+        help="CSV file or benchmark output directory (default: bundled demo)"
+    )
     parser.add_argument("--tracking-csv", default=None)
     parser.add_argument("--dynamic-csv", default=None)
     parser.add_argument("--output", "-o", default=None)

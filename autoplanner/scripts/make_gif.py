@@ -57,10 +57,14 @@ def load_path(path):
 def main():
     ap = argparse.ArgumentParser(
         description="Generate GIF animation of tree-based planner")
-    ap.add_argument("--tree", required=True, help="Tree edges CSV file")
-    ap.add_argument("--path", default=None, help="Path CSV file (optional)")
-    ap.add_argument("--map", default=None, help="Grid map file (optional)")
-    ap.add_argument("--output", default="results/gifs/animation.gif")
+    ap.add_argument("--tree", default="autoplanner/data/demos/rrt_tree.csv",
+                    help="Tree edges CSV file (default: bundled RRT demo)")
+    ap.add_argument("--path", default="autoplanner/data/demos/rrt_path.csv",
+                    help="Path CSV file (optional)")
+    ap.add_argument("--map", default="autoplanner/data/maps/simple_50x50.txt",
+                    help="Grid map file (optional)")
+    ap.add_argument("--output",
+                    default="autoplanner/results/gifs/rrt_growth_demo.gif")
     ap.add_argument("--max_frames", type=int, default=100,
                     help="Number of frames (sub-sampled)")
     ap.add_argument("--fps", type=int, default=10,

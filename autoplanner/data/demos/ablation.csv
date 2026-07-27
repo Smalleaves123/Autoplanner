@@ -1,0 +1,6 @@
+config,map,time_ms,path_length,expanded_nodes,turning_count,smoothness
+A*,simple_50x50,1.20,67.4,250,9,0.88
+Weighted A* (w=1.5),simple_50x50,0.85,69.2,170,11,0.82
+A* + obstacle,simple_50x50,1.42,68.0,280,8,0.90
+A* + turning,simple_50x50,1.55,66.8,290,6,0.94
+Improved A* (full),simple_50x50,1.65,64.8,310,6,0.93

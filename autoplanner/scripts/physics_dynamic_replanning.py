@@ -17,9 +17,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import autoplanner
-import autompc
-
 from physics_backend_smoke import PhysicsOptions, PyBulletRacecarSimulator
 from physics_tracking_benchmark import load_obstacle_rectangles
 
@@ -82,6 +79,18 @@ def main() -> int:
     args = parser.parse_args()
     if args.frames <= 0 or args.steps_per_frame <= 0:
         parser.error("frames and steps-per-frame must be positive")
+
+    global autoplanner, autompc
+    try:
+        import autoplanner
+        import autompc
+    except ModuleNotFoundError as error:
+        parser.error(
+            "Python bindings are required. Build them with "
+            "cmake -S . -B build-python -DBUILD_PYTHON_BINDINGS=ON, then "
+            "run with PYTHONPATH=build-python/python. "
+            f"Missing module: {error.name}"
+        )
 
     root = Path(__file__).resolve().parents[2]
     map_path = (root / args.map).resolve()

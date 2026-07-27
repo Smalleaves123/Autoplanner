@@ -6,8 +6,12 @@ import pandas as pd
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('csv', nargs='+', help='Tracking CSV files')
-    ap.add_argument('--output', default='docs/tracking_comparison.png')
+    ap.add_argument('csv', nargs='*', default=[
+        'autompc/results/circle_pid.csv',
+        'autompc/results/circle_pure_pursuit.csv',
+        'autompc/results/circle_stanley.csv',
+    ], help='Tracking CSV files (default: bundled controller demos)')
+    ap.add_argument('--output', default='autompc/results/tracking_comparison.png')
     args = ap.parse_args()
 
     fig, ax = plt.subplots(figsize=(8, 8))
