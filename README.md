@@ -92,6 +92,20 @@ conda run --no-capture-output -n CV python autoplanner/scripts/make_gif.py
 conda run --no-capture-output -n CV python autompc/scripts/plot_tracking.py
 ```
 
+### Local interactive experiment lab
+
+The ROS-free Streamlit dashboard selects maps, planners, controllers, start
+and goal cells, then runs the existing C++ pipeline and displays its trace,
+metrics, and plot. Dynamic mode can inject a predicted moving-obstacle
+trajectory to exercise D* Lite replanning.
+
+```bash
+conda run --no-capture-output -n CV python autoplanner/scripts/launch_dashboard.py
+```
+
+It opens at `http://localhost:8501`. Install the optional dashboard dependency
+with `python3 -m pip install -e '.[dashboard]'` when it is not already present.
+
 ```bash
 python3 autoplanner/scripts/run_all_experiments.py \
     --build_dir build \

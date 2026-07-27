@@ -22,6 +22,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dashboard = [
+    "streamlit>=1.37",
+]
 simulation = [
     "mujoco>=3.3,<4",
     "pybullet>=3.2.5,<3.3",
