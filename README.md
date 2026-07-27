@@ -251,7 +251,8 @@ For externally driven updates, repeat `--obstacle FRAME X Y` (or use
 Trace outputs can be visualized over the occupancy grid:
 
 ```bash
-python3 autoplanner/scripts/visualize_navigation_trace.py \
+conda run --no-capture-output -n CV python \
+    autoplanner/scripts/visualize_navigation_trace.py \
     --map autoplanner/data/maps/simple_50x50.txt \
     --trace /tmp/robotnav-dynamic/trace.csv \
     --metrics /tmp/robotnav-dynamic/metrics.json \
