@@ -22,7 +22,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tools = [
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+    "pillow>=9",
+]
 dashboard = [
+    "matplotlib>=3.7",
     "streamlit>=1.37",
 ]
 simulation = [

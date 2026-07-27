@@ -214,7 +214,7 @@ top-level target:
 ### Run Benchmark
 
 ```bash
-python3 autoplanner/scripts/run_all_experiments.py \
+python autoplanner/scripts/run_all_experiments.py \
     --build_dir build \
     --data_dir autoplanner/data \
     --output_dir autoplanner/results/benchmark \
@@ -225,13 +225,13 @@ For repeatable experiments across maps, use the Python orchestration script
 from the repository root:
 
 ```bash
-python3 autoplanner/scripts/run_all_experiments.py \
+python autoplanner/scripts/run_all_experiments.py \
     --build_dir build \
     --data_dir autoplanner/data \
     --output_dir autoplanner/results/benchmark \
     --repeat 3 --controllers stanley pure_pursuit mpc
 
-python3 autoplanner/scripts/compare_results.py \
+python autoplanner/scripts/compare_results.py \
     autoplanner/results/benchmark
 ```
 
@@ -267,7 +267,7 @@ Build the optional pybind11 module from the repository root:
 cmake -S . -B build-python -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTS=OFF -DBUILD_PYTHON_BINDINGS=ON
 cmake --build build-python -j
-PYTHONPATH=build-python/python python3 -c \
+PYTHONPATH=build-python/python python -c \
   "import autoplanner; print(autoplanner.__doc__)"
 ```
 

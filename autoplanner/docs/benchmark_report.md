@@ -52,7 +52,7 @@ From the repository root:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
-python3 autoplanner/scripts/run_all_experiments.py \
+python autoplanner/scripts/run_all_experiments.py \
     --build_dir build \
     --data_dir autoplanner/data \
     --output_dir autoplanner/results/benchmark \
@@ -60,7 +60,7 @@ python3 autoplanner/scripts/run_all_experiments.py \
     --controllers stanley pure_pursuit mpc \
     --smooth shortcut
 
-python3 autoplanner/scripts/compare_results.py \
+python autoplanner/scripts/compare_results.py \
     autoplanner/results/benchmark \
     --output autoplanner/results/benchmark/report.txt
 ```

@@ -86,9 +86,9 @@ def main() -> int:
         import autompc
     except ModuleNotFoundError as error:
         parser.error(
-            "Python bindings are required. Build them with "
-            "cmake -S . -B build-python -DBUILD_PYTHON_BINDINGS=ON, then "
-            "run with PYTHONPATH=build-python/python. "
+            "Python bindings are required. From the repository root, install "
+            "the optional simulation dependencies with "
+            "python -m pip install -e '.[simulation]'. "
             f"Missing module: {error.name}"
         )
 

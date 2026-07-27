@@ -26,16 +26,15 @@ cmake --build build -j
 To build/install the Python package:
 
 ```bash
-python3 -m pip install -e .
+python -m pip install -e '.[tools]'
 ```
 
-Optional physics validation backends can be installed in the local `CV`
-environment. They are used for slower, contact-aware validation; the C++
-kinematic simulator remains the default benchmark backend.
+Optional physics validation backends are used for slower, contact-aware
+validation; the C++ kinematic simulator remains the default benchmark backend.
 
 ```bash
-conda run -n CV python -m pip install 'mujoco>=3.3,<4' 'pybullet>=3.2.5,<3.3' 'gymnasium>=0.29'
-conda run -n CV python autoplanner/scripts/physics_backend_smoke.py \
+python -m pip install -e '.[simulation]'
+python autoplanner/scripts/physics_backend_smoke.py \
     --backend both --output autoplanner/results/physics_smoke.json
 ```
 
@@ -47,9 +46,7 @@ For closed-loop validation, run the planner, C++ trajectory generator, and C++
 controller against the physics backend:
 
 ```bash
-PYTHONPATH=/tmp/robotnav-build-cv/python \
-conda run --no-capture-output -n CV python -u \
-    autoplanner/scripts/physics_tracking_benchmark.py \
+python autoplanner/scripts/physics_tracking_benchmark.py \
     --backend both --controller mpc \
     --output-dir autoplanner/results/physics_tracking
 ```
@@ -66,9 +63,7 @@ Dynamic physical replanning uses the same occupancy grid for collision geometry
 and D* Lite updates:
 
 ```bash
-PYTHONPATH=/tmp/robotnav-build-cv/python \
-conda run --no-capture-output -n CV python -u \
-    autoplanner/scripts/physics_dynamic_replanning.py \
+python autoplanner/scripts/physics_dynamic_replanning.py \
     --controller mpc --frames 30 --steps-per-frame 80 \
     --output-dir autoplanner/results/physics_dynamic
 ```
@@ -85,11 +80,11 @@ the versioned samples in `autoplanner/data/demos`, while generated outputs are
 written below `autoplanner/results`.
 
 ```bash
-conda run --no-capture-output -n CV python autoplanner/scripts/visualize_path.py
-conda run --no-capture-output -n CV python autoplanner/scripts/visualize_navigation_trace.py
-conda run --no-capture-output -n CV python autoplanner/scripts/plot_benchmark.py
-conda run --no-capture-output -n CV python autoplanner/scripts/make_gif.py
-conda run --no-capture-output -n CV python autompc/scripts/plot_tracking.py
+python autoplanner/scripts/visualize_path.py
+python autoplanner/scripts/visualize_navigation_trace.py
+python autoplanner/scripts/plot_benchmark.py
+python autoplanner/scripts/make_gif.py
+python autompc/scripts/plot_tracking.py
 ```
 
 ### Local interactive experiment lab
@@ -99,39 +94,44 @@ and goal cells, then runs the existing C++ pipeline and displays its trace,
 metrics, and plot. Dynamic mode can inject a predicted moving-obstacle
 trajectory to exercise D* Lite replanning.
 
+Install the optional dashboard dependency once:
+
 ```bash
-conda run --no-capture-output -n CV python autoplanner/scripts/launch_dashboard.py
+python -m pip install -e '.[tools,dashboard]'
 ```
 
-It opens at `http://localhost:8501`. Install the optional dashboard dependency
-with `python3 -m pip install -e '.[dashboard]'` when it is not already present.
+```bash
+python autoplanner/scripts/launch_dashboard.py
+```
+
+It opens at `http://localhost:8501`.
 
 ```bash
-python3 autoplanner/scripts/run_all_experiments.py \
+python autoplanner/scripts/run_all_experiments.py \
     --build_dir build \
     --data_dir autoplanner/data \
     --output_dir autoplanner/results/benchmark \
     --repeat 3 --controllers stanley pure_pursuit mpc
 
-python3 autoplanner/scripts/compare_results.py \
+python autoplanner/scripts/compare_results.py \
     autoplanner/results/benchmark
 
 # End-to-end planning and tracking
-python3 autoplanner/scripts/run_navigation_pipeline.py \
+python autoplanner/scripts/run_navigation_pipeline.py \
     --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
     --planner improved_astar \
     --controller stanley
 
 # Finite-horizon MPC tracking
-python3 autoplanner/scripts/run_navigation_pipeline.py \
+python autoplanner/scripts/run_navigation_pipeline.py \
     --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
     --planner improved_astar \
     --controller mpc --mpc-horizon 15
 
 # Rectangle robot with conservative footprint inflation
-python3 autoplanner/scripts/run_navigation_pipeline.py \
+python autoplanner/scripts/run_navigation_pipeline.py \
     --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
     --planner astar \
@@ -156,7 +156,7 @@ cmake -S . -B build-python -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTS=OFF -DBUILD_PYTHON_BINDINGS=ON
 cmake --build build-python -j
 
-PYTHONPATH=build-python/python python3 - <<'PY'
+PYTHONPATH=build-python/python python - <<'PY'
 import autoplanner
 import autompc
 
@@ -233,8 +233,7 @@ The existing Python orchestrator can select this unified C++ engine while
 keeping its legacy planner/tracker mode available:
 
 ```bash
-conda run --no-capture-output -n CV python \
-    autoplanner/scripts/run_navigation_pipeline.py \
+python autoplanner/scripts/run_navigation_pipeline.py \
     --engine unified \
     --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
@@ -256,8 +255,7 @@ It is also ROS-free. Run it through the same Python entry point to create
 `navigation.png` automatically:
 
 ```bash
-conda run --no-capture-output -n CV python \
-    autoplanner/scripts/run_navigation_pipeline.py \
+python autoplanner/scripts/run_navigation_pipeline.py \
     --engine dynamic --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
     --start 1 1 --goal 20 20 --planner astar --controller stanley \
@@ -278,8 +276,7 @@ For externally driven updates, repeat `--obstacle FRAME X Y` (or use
 `--no-auto-obstacles`:
 
 ```bash
-conda run --no-capture-output -n CV python \
-    autoplanner/scripts/run_navigation_pipeline.py \
+python autoplanner/scripts/run_navigation_pipeline.py \
     --engine dynamic --build_dir build \
     --map autoplanner/data/maps/simple_50x50.txt \
     --start 1 1 --goal 20 20 --controller stanley --smooth none \
@@ -291,8 +288,7 @@ When invoking the lower-level dynamic C++ CLI directly, use the same
 visualizer on its existing trace artifacts:
 
 ```bash
-conda run --no-capture-output -n CV python \
-    autoplanner/scripts/visualize_navigation_trace.py \
+python autoplanner/scripts/visualize_navigation_trace.py \
     --map autoplanner/data/maps/simple_50x50.txt \
     --trace /tmp/robotnav-dynamic/trace.csv \
     --metrics /tmp/robotnav-dynamic/metrics.json \
