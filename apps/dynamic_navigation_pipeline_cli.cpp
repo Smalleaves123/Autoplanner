@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <exception>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -33,6 +34,7 @@ void printHelp() {
         << "  --max-auto-obstacles N  maximum generated obstacles\n"
         << "  --obstacle FRAME X Y  externally occupy a cell at frame\n"
         << "  --clear-obstacle FRAME X Y  externally clear a cell at frame\n"
+        << "  --moving-obstacle START END X Y DX DY  moving occupied cell\n"
         << "  --no-auto-obstacles   disable automatic obstacle insertion\n"
         << "  --output-dir PATH     output directory\n";
 }
@@ -68,7 +70,9 @@ int main(int argc, char** argv) {
     bool inflate_override = false;
     std::string smoother_override;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
+    std::vector<robotnav::MovingObstacle> moving_obstacles;
 
+    try {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--scenario" && i + 1 < argc) {
@@ -130,6 +134,17 @@ int main(int argc, char** argv) {
             update.cell = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             update.occupied = arg == "--obstacle";
             obstacle_updates.push_back(update);
+        } else if (arg == "--moving-obstacle" && i + 6 < argc) {
+            robotnav::MovingObstacle obstacle;
+            obstacle.start_frame = static_cast<std::size_t>(
+                std::stoul(argv[++i]));
+            obstacle.end_frame = static_cast<std::size_t>(
+                std::stoul(argv[++i]));
+            obstacle.start_cell = {
+                std::stoi(argv[++i]), std::stoi(argv[++i])};
+            obstacle.dx_per_frame = std::stoi(argv[++i]);
+            obstacle.dy_per_frame = std::stoi(argv[++i]);
+            moving_obstacles.push_back(obstacle);
         } else if (arg == "--no-auto-obstacles") {
             dynamic.auto_insert_obstacles = false;
         } else if (arg == "--output-dir" && i + 1 < argc) {
@@ -142,6 +157,12 @@ int main(int argc, char** argv) {
             printHelp();
             return 1;
         }
+    }
+    } catch (const std::exception& error) {
+        std::cerr << "Invalid command-line argument: " << error.what()
+                  << "\n";
+        printHelp();
+        return 1;
     }
 
     if (!scenario_path.empty()) {
@@ -164,6 +185,7 @@ int main(int argc, char** argv) {
 
     dynamic.pipeline = scenario.pipeline;
     dynamic.obstacle_updates = std::move(obstacle_updates);
+    dynamic.moving_obstacles = std::move(moving_obstacles);
     if (no_diagonal) dynamic.pipeline.planner_options.allow_diagonal = false;
     autoplanner::GridMap map;
     if (!map.loadFromTxt(scenario.map_path)) {

@@ -233,6 +233,9 @@ The expected report has `status_code: "success"`,
 `replanning_count >= 1`, `goal_reached: true`, and `safe_stop: false`.
 Automatic obstacles use a conservative safety envelope and a reachability
 check so the demonstration does not intentionally create an unsolvable map.
+To model a simple moving obstacle, use `--moving-obstacle START END X Y DX DY`;
+the obstacle occupies `(X, Y)` at `START` and then moves by `(DX, DY)` cells
+per frame through `END`.
 For externally driven updates, repeat `--obstacle FRAME X Y` (or use
 `--clear-obstacle FRAME X Y`) and disable the demo generator with
 `--no-auto-obstacles`:
@@ -243,4 +246,14 @@ For externally driven updates, repeat `--obstacle FRAME X Y` (or use
     --start 1 1 --goal 20 20 --controller stanley --smooth none \
     --frames 20 --steps-per-frame 40 --no-auto-obstacles \
     --obstacle 1 3 10 --output-dir /tmp/robotnav-external-dynamic
+```
+
+Trace outputs can be visualized over the occupancy grid:
+
+```bash
+python3 autoplanner/scripts/visualize_navigation_trace.py \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --trace /tmp/robotnav-dynamic/trace.csv \
+    --metrics /tmp/robotnav-dynamic/metrics.json \
+    --output /tmp/robotnav-dynamic/trace.png
 ```

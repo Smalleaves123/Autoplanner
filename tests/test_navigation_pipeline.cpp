@@ -1,6 +1,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 
@@ -123,6 +124,62 @@ TEST(DynamicNavigationPipelineTest, AcceptsExternalObstacleUpdates) {
         << result.message;
     EXPECT_EQ(result.metrics.external_update_count, 1u);
     EXPECT_GE(result.metrics.replanning_count, 1u);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+}
+
+TEST(DynamicNavigationPipelineTest, TracksMovingObstacleUpdates) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.max_steps = 1000;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({1, 3, {3, 10}, 1, 0});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
+    EXPECT_GE(result.metrics.replanning_count, 1u);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      "robotnav_dynamic_metrics_test.json";
+    ASSERT_TRUE(robotnav::saveDynamicMetricsJson(result, path.string()));
+    std::ifstream input(path);
+    ASSERT_TRUE(input.is_open());
+    const std::string json(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>());
+    EXPECT_NE(json.find("moving_obstacle_update_count"), std::string::npos);
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}
+
+TEST(DynamicNavigationPipelineTest, PreservesExternalOccupancyWhenObstacleMoves) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.max_steps = 1000;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({1, 3, {3, 10}, 1, 0});
+    config.obstacle_updates.push_back({1, {3, 10}, true});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_GE(result.metrics.moving_obstacle_conflict_count, 1u);
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_FALSE(result.metrics.safe_stop);
 }

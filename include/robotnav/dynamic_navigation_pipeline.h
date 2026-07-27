@@ -20,6 +20,14 @@ struct DynamicObstacleUpdate {
     bool occupied = true;
 };
 
+struct MovingObstacle {
+    std::size_t start_frame = 0;
+    std::size_t end_frame = 0;
+    autoplanner::Point2i start_cell{-1, -1};
+    int dx_per_frame = 0;
+    int dy_per_frame = 0;
+};
+
 struct DynamicPipelineConfig {
     PipelineConfig pipeline;
     std::size_t frames = 5;
@@ -30,6 +38,7 @@ struct DynamicPipelineConfig {
     bool auto_insert_obstacles = true;
     bool compare_astar = true;
     std::vector<DynamicObstacleUpdate> obstacle_updates;
+    std::vector<MovingObstacle> moving_obstacles;
 };
 
 struct DynamicTraceSample {
@@ -57,6 +66,8 @@ struct DynamicPipelineMetrics {
     std::size_t steps = 0;
     std::size_t replanning_count = 0;
     std::size_t external_update_count = 0;
+    std::size_t moving_obstacle_update_count = 0;
+    std::size_t moving_obstacle_conflict_count = 0;
     std::size_t dstar_failure_count = 0;
     std::size_t astar_fallback_count = 0;
     std::size_t collision_steps = 0;

@@ -183,6 +183,28 @@ bool alreadyPlaced(const std::vector<autoplanner::Point2i>& placed,
                        });
 }
 
+bool sameCell(const autoplanner::Point2i& left,
+              const autoplanner::Point2i& right) {
+    return left.x == right.x && left.y == right.y;
+}
+
+bool containsCell(const std::vector<autoplanner::Point2i>& cells,
+                  const autoplanner::Point2i& cell) {
+    return std::any_of(cells.begin(), cells.end(),
+                       [&cell](const autoplanner::Point2i& candidate) {
+                           return sameCell(candidate, cell);
+                       });
+}
+
+autoplanner::Point2i movingObstacleCell(
+    const MovingObstacle& obstacle,
+    std::size_t frame) {
+    const auto delta = static_cast<int>(frame - obstacle.start_frame);
+    return {
+        obstacle.start_cell.x + obstacle.dx_per_frame * delta,
+        obstacle.start_cell.y + obstacle.dy_per_frame * delta};
+}
+
 bool insertObstacleAhead(autoplanner::GridMap& map,
                          const autoplanner::Path2d& path,
                          const autompc::State& state,
@@ -399,6 +421,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     }
 
     std::vector<autoplanner::Point2i> placed_obstacles;
+    std::vector<autoplanner::Point2i> active_moving_cells(
+        config.moving_obstacles.size(), {-1, -1});
+    std::vector<autoplanner::Point2i> externally_occupied_cells;
     autompc::Control previous_control{};
     bool has_previous_control = false;
     std::size_t total_control_samples = 0;
@@ -438,6 +463,50 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
          ++frame) {
         autoplanner::Point2i obstacle{-1, -1};
         bool map_changed = false;
+        for (std::size_t index = 0;
+             index < config.moving_obstacles.size(); ++index) {
+            const auto& moving = config.moving_obstacles[index];
+            const bool active_this_frame =
+                moving.end_frame >= moving.start_frame &&
+                frame >= moving.start_frame && frame <= moving.end_frame;
+            const auto current = active_this_frame
+                ? movingObstacleCell(moving, frame)
+                : autoplanner::Point2i{-1, -1};
+            const auto previous = active_moving_cells[index];
+            if (dynamic_map.isInside(previous.x, previous.y) &&
+                !sameCell(previous, current)) {
+                const bool externally_owned = containsCell(
+                    externally_occupied_cells, previous);
+                if (!externally_owned &&
+                    dynamic_map.isOccupied(previous.x, previous.y) &&
+                    dynamic_map.setOccupied(previous.x, previous.y, false)) {
+                    map_changed = true;
+                    obstacle = previous;
+                    ++result.metrics.moving_obstacle_update_count;
+                } else if (externally_owned) {
+                    ++result.metrics.moving_obstacle_conflict_count;
+                }
+                active_moving_cells[index] = {-1, -1};
+            }
+            if (!active_this_frame) continue;
+            if (sameCell(previous, current) &&
+                dynamic_map.isInside(current.x, current.y) &&
+                dynamic_map.isOccupied(current.x, current.y)) {
+                active_moving_cells[index] = current;
+                continue;
+            }
+            if (!dynamic_map.isInside(current.x, current.y) ||
+                !dynamic_map.isFree(current.x, current.y) ||
+                (current.x == goal.x && current.y == goal.y)) {
+                continue;
+            }
+            if (dynamic_map.setOccupied(current.x, current.y, true)) {
+                map_changed = true;
+                obstacle = current;
+                active_moving_cells[index] = current;
+                ++result.metrics.moving_obstacle_update_count;
+            }
+        }
         for (const auto& update : config.obstacle_updates) {
             if (update.frame != frame ||
                 !dynamic_map.isInside(update.cell.x, update.cell.y)) {
@@ -445,6 +514,20 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             const bool was_occupied = dynamic_map.isOccupied(
                 update.cell.x, update.cell.y);
+            if (update.occupied) {
+                if (!containsCell(externally_occupied_cells, update.cell)) {
+                    externally_occupied_cells.push_back(update.cell);
+                }
+            } else {
+                externally_occupied_cells.erase(
+                    std::remove_if(
+                        externally_occupied_cells.begin(),
+                        externally_occupied_cells.end(),
+                        [&update](const autoplanner::Point2i& cell) {
+                            return sameCell(cell, update.cell);
+                        }),
+                    externally_occupied_cells.end());
+            }
             if (dynamic_map.setOccupied(update.cell.x, update.cell.y,
                                         update.occupied) &&
                 was_occupied != update.occupied) {
@@ -659,6 +742,10 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << result.metrics.replanning_count << ",\n"
            << "  \"external_update_count\": "
            << result.metrics.external_update_count << ",\n"
+           << "  \"moving_obstacle_update_count\": "
+           << result.metrics.moving_obstacle_update_count << ",\n"
+           << "  \"moving_obstacle_conflict_count\": "
+           << result.metrics.moving_obstacle_conflict_count << ",\n"
            << "  \"dstar_failure_count\": "
            << result.metrics.dstar_failure_count << ",\n"
            << "  \"astar_fallback_count\": "
