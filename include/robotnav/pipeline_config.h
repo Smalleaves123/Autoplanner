@@ -26,6 +26,7 @@ struct PipelineConfig {
     double robot_width = 0.0;
     bool inflate_map = false;
     int smoothing_iterations = 100;
+    double smoothing_max_curvature = 0.5;
 
     autoplanner::PlannerFactoryOptions planner_options;
     autompc::TrajectoryOptions trajectory_options;

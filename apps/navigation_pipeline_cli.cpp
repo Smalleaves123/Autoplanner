@@ -21,8 +21,9 @@ void printHelp() {
         << "  --robot-length N      rectangular footprint length\n"
         << "  --robot-width N       rectangular footprint width\n"
         << "  --inflate             inflate planning map\n"
-        << "  --smooth NAME         none|shortcut\n"
+        << "  --smooth NAME         none|shortcut|curvature\n"
         << "  --smooth-iterations N smoothing iterations\n"
+        << "  --smooth-max-curvature N curvature smoother limit\n"
         << "  --local-planner NAME  none|dwa\n"
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
     bool has_inflate = false;
     bool has_smoother = false;
     bool has_smoothing_iterations = false;
+    bool has_smoothing_max_curvature = false;
     bool has_local_planner = false;
     bool has_dwa_prediction_time = false;
     bool has_dwa_velocity_samples = false;
@@ -95,6 +97,10 @@ int main(int argc, char** argv) {
         } else if (arg == "--smooth-iterations" && i + 1 < argc) {
             scenario.pipeline.smoothing_iterations = std::stoi(argv[++i]);
             has_smoothing_iterations = true;
+        } else if (arg == "--smooth-max-curvature" && i + 1 < argc) {
+            scenario.pipeline.smoothing_max_curvature =
+                std::stod(argv[++i]);
+            has_smoothing_max_curvature = true;
         } else if (arg == "--local-planner" && i + 1 < argc) {
             scenario.pipeline.local_planner = argv[++i];
             has_local_planner = true;
@@ -168,6 +174,9 @@ int main(int argc, char** argv) {
             pipeline_override.smoother;
         if (has_smoothing_iterations) scenario.pipeline.smoothing_iterations =
             pipeline_override.smoothing_iterations;
+        if (has_smoothing_max_curvature)
+            scenario.pipeline.smoothing_max_curvature =
+                pipeline_override.smoothing_max_curvature;
         if (has_local_planner) scenario.pipeline.local_planner =
             pipeline_override.local_planner;
         if (has_dwa_prediction_time)

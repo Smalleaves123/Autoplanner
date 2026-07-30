@@ -251,6 +251,18 @@ The output directory contains `trace.csv` with state and command samples and
 `--planner`, `--controller`, `--start`, and `--goal` to override scenario
 values for a quick local experiment.
 
+For vehicle-executable paths, the pipeline also supports a curvature-constrained
+smoother. It iteratively relaxes sharp turns while preserving collision-free
+segments and fixed endpoints:
+
+```bash
+./build/apps/navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 \
+    --smooth curvature --smooth-max-curvature 0.3 \
+    --output-dir /tmp/robotnav-curvature
+```
+
 An optional Dynamic Window Approach local planner can be inserted between the
 controller and simulator. It samples velocity/steering commands, rolls them out
 against the active collision checker, and executes the best collision-free

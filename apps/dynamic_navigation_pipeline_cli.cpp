@@ -26,7 +26,8 @@ void printHelp() {
         << "  --robot-length N      rectangular footprint length\n"
         << "  --robot-width N       rectangular footprint width\n"
         << "  --inflate             inflate planning map\n"
-        << "  --smooth NAME         none|shortcut\n"
+        << "  --smooth NAME         none|shortcut|curvature\n"
+        << "  --smooth-max-curvature N curvature smoother limit\n"
         << "  --local-planner NAME  none|dwa\n"
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
@@ -64,6 +65,7 @@ int main(int argc, char** argv) {
     bool has_width = false;
     bool has_inflate = false;
     bool has_smoother = false;
+    bool has_smoothing_max_curvature = false;
     bool has_local_planner = false;
     bool has_dwa_prediction_time = false;
     bool has_dwa_velocity_samples = false;
@@ -80,6 +82,7 @@ int main(int argc, char** argv) {
     double width_override = 0.0;
     bool inflate_override = false;
     std::string smoother_override;
+    double smoothing_max_curvature_override = 0.0;
     std::string local_planner_override;
     double dwa_prediction_time_override = 0.0;
     int dwa_velocity_samples_override = 0;
@@ -128,6 +131,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--smooth" && i + 1 < argc) {
             smoother_override = argv[++i];
             has_smoother = true;
+        } else if (arg == "--smooth-max-curvature" && i + 1 < argc) {
+            smoothing_max_curvature_override = std::stod(argv[++i]);
+            has_smoothing_max_curvature = true;
         } else if (arg == "--local-planner" && i + 1 < argc) {
             local_planner_override = argv[++i];
             has_local_planner = true;
@@ -216,6 +222,9 @@ int main(int argc, char** argv) {
     if (has_width) scenario.pipeline.robot_width = width_override;
     if (has_inflate) scenario.pipeline.inflate_map = inflate_override;
     if (has_smoother) scenario.pipeline.smoother = smoother_override;
+    if (has_smoothing_max_curvature)
+        scenario.pipeline.smoothing_max_curvature =
+            smoothing_max_curvature_override;
     if (has_local_planner) scenario.pipeline.local_planner =
         local_planner_override;
     if (has_dwa_prediction_time)

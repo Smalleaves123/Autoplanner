@@ -17,6 +17,7 @@
 #include "autoplanner/costmap/costmap_2d.h"
 #include "autoplanner/core/path.h"
 #include "autoplanner/core/planner_factory.h"
+#include "autoplanner/smoothing/curvature_constrained_smoother.h"
 #include "autoplanner/smoothing/shortcut_smoother.h"
 
 namespace robotnav {
@@ -215,7 +216,11 @@ PipelineResult NavigationPipeline::run(
     result.planning.collision_free = true;
     result.metrics.collision_free = true;
     if (config.smoother != "none") {
-        if (config.smoother != "shortcut" || config.smoothing_iterations < 0) {
+        if ((config.smoother != "shortcut" &&
+             config.smoother != "curvature") ||
+            config.smoothing_iterations < 0 ||
+            (config.smoother == "curvature" &&
+             config.smoothing_max_curvature <= 0.0)) {
             return fail(StatusCode::InvalidConfiguration,
                         "unsupported path smoother configuration");
         }
@@ -234,9 +239,17 @@ PipelineResult NavigationPipeline::run(
                         circumscribed_radius));
             checker_for_smoothing = smoothing_checker.get();
         }
-        autoplanner::ShortcutSmoother smoother(
-            *checker_for_smoothing, config.smoothing_iterations);
-        result.planning.path = smoother.smooth(result.planning.path);
+        if (config.smoother == "shortcut") {
+            autoplanner::ShortcutSmoother smoother(
+                *checker_for_smoothing, config.smoothing_iterations);
+            result.planning.path = smoother.smooth(result.planning.path);
+        } else {
+            autoplanner::CurvatureConstrainedSmoother smoother(
+                *checker_for_smoothing,
+                config.smoothing_max_curvature,
+                config.smoothing_iterations);
+            result.planning.path = smoother.smooth(result.planning.path);
+        }
         if (!pathIsValid()) {
             return fail(StatusCode::Collision,
                         "smoothed path failed collision validation");

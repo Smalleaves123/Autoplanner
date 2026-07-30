@@ -144,6 +144,27 @@ TEST(NavigationPipelineTest, SupportsDwaLocalPlanner) {
     EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
 }
 
+TEST(NavigationPipelineTest, SupportsCurvatureConstrainedSmoothing) {
+    const auto map = loadSimpleMap();
+    robotnav::PipelineConfig config;
+    config.planner = "astar";
+    config.controller = "stanley";
+    config.smoother = "curvature";
+    config.smoothing_max_curvature = 0.3;
+    config.smoothing_iterations = 80;
+    config.max_steps = 3000;
+
+    const robotnav::NavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_TRUE(result.metrics.collision_free);
+    EXPECT_EQ(result.metrics.smoother, "curvature");
+}
+
 TEST(DynamicNavigationPipelineTest, ReplansAndReachesGoalWithoutCollision) {
     const auto map = loadSimpleMap();
     robotnav::DynamicPipelineConfig config;
@@ -299,6 +320,29 @@ TEST(DynamicNavigationPipelineTest, SupportsSpaceTimeAStarPrediction) {
     EXPECT_FALSE(result.metrics.safe_stop);
 }
 
+TEST(DynamicNavigationPipelineTest, SupportsCurvatureSmoothing) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.smoother = "curvature";
+    config.pipeline.smoothing_max_curvature = 0.3;
+    config.pipeline.max_steps = 1000;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({1, 3, {3, 10}, 1, 0});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_EQ(result.metrics.smoother, "curvature");
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+}
+
 TEST(ScenarioConfigTest, LoadsPipelineValues) {
     const auto path = std::filesystem::temp_directory_path() /
                       "robotnav_pipeline_test.yaml";
@@ -324,6 +368,7 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "smoothing:\n"
                << "  name: shortcut\n"
                << "  iterations: 12\n"
+               << "  max_curvature: 0.4\n"
                << "local_planner:\n"
                << "  name: dwa\n"
                << "  dwa:\n"
@@ -348,6 +393,7 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(scenario.pipeline.robot_width, 0.5);
     EXPECT_EQ(scenario.pipeline.smoother, "shortcut");
     EXPECT_EQ(scenario.pipeline.smoothing_iterations, 12);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.smoothing_max_curvature, 0.4);
     EXPECT_EQ(scenario.pipeline.local_planner, "dwa");
     EXPECT_DOUBLE_EQ(scenario.pipeline.dwa_options.prediction_time, 0.7);
     EXPECT_EQ(scenario.pipeline.dwa_options.velocity_samples, 3);

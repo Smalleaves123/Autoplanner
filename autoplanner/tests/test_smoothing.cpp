@@ -1,3 +1,6 @@
+#include <filesystem>
+#include <fstream>
+
 #include <gtest/gtest.h>
 
 #include "autoplanner/collision/grid_collision_checker.h"
@@ -5,6 +8,7 @@
 #include "autoplanner/smoothing/shortcut_smoother.h"
 #include "autoplanner/smoothing/bezier_smoother.h"
 #include "autoplanner/smoothing/bspline_smoother.h"
+#include "autoplanner/smoothing/curvature_constrained_smoother.h"
 
 using namespace autoplanner;
 
@@ -102,11 +106,56 @@ TEST_F(SmoothingTest, BSplineSmootherWorks) {
     EXPECT_GT(smoothed.size(), 0u);
 }
 
+TEST_F(SmoothingTest, CurvatureConstrainedSmootherReducesSharpTurn) {
+    const auto map_path = std::filesystem::temp_directory_path() /
+                          "autoplanner_curvature_smoothing_map.txt";
+    {
+        std::ofstream output(map_path);
+        ASSERT_TRUE(output.is_open());
+        for (int row = 0; row < 20; ++row) {
+            output << "00000000000000000000\n";
+        }
+    }
+
+    GridMap open_map;
+    ASSERT_TRUE(open_map.loadFromTxt(map_path.string()));
+    GridCollisionChecker checker(open_map);
+    CurvatureConstrainedSmoother smoother(checker, 0.05, 80, 0.35);
+
+    std::vector<Point2d> path = {
+        {1.0, 1.0}, {1.0, 10.0}, {10.0, 10.0}, {12.0, 10.0}
+    };
+    const double before = discreteCurvature(path[0], path[1], path[2]);
+    auto smoothed = smoother.smooth(path);
+    const double after = discreteCurvature(
+        smoothed[0], smoothed[1], smoothed[2]);
+
+    EXPECT_LT(after, before);
+    EXPECT_DOUBLE_EQ(smoothed.front().x, path.front().x);
+    EXPECT_DOUBLE_EQ(smoothed.front().y, path.front().y);
+    EXPECT_DOUBLE_EQ(smoothed.back().x, path.back().x);
+    EXPECT_DOUBLE_EQ(smoothed.back().y, path.back().y);
+    EXPECT_TRUE(checker.isPathValid(smoothed));
+
+    std::error_code error;
+    std::filesystem::remove(map_path, error);
+}
+
 TEST_F(SmoothingTest, SmoothShortPathUnchanged) {
     GridCollisionChecker checker(map_);
     ShortcutSmoother smoother(checker, 100);
 
     // Path with only 2 points cannot be shortened further.
+    std::vector<Point2d> path = {{1.0, 1.0}, {48.0, 1.0}};
+    auto smoothed = smoother.smooth(path);
+
+    EXPECT_EQ(smoothed.size(), 2u);
+}
+
+TEST_F(SmoothingTest, CurvatureShortPathUnchanged) {
+    GridCollisionChecker checker(map_);
+    CurvatureConstrainedSmoother smoother(checker, 0.25, 100);
+
     std::vector<Point2d> path = {{1.0, 1.0}, {48.0, 1.0}};
     auto smoothed = smoother.smooth(path);
 

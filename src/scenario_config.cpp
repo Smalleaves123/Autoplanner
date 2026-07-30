@@ -36,6 +36,8 @@ bool loadScenarioConfig(const std::string& file_path,
         "robot.inflate", pipeline.inflate_map);
     pipeline.smoothing_iterations = loader.getInt(
         "smoothing.iterations", pipeline.smoothing_iterations);
+    pipeline.smoothing_max_curvature = loader.getDouble(
+        "smoothing.max_curvature", pipeline.smoothing_max_curvature);
     const int max_steps = loader.getInt(
         "pipeline.max_steps", static_cast<int>(pipeline.max_steps));
     if (max_steps < 0) return false;
