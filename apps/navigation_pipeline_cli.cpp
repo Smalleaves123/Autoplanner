@@ -23,6 +23,10 @@ void printHelp() {
         << "  --inflate             inflate planning map\n"
         << "  --smooth NAME         none|shortcut\n"
         << "  --smooth-iterations N smoothing iterations\n"
+        << "  --local-planner NAME  none|dwa\n"
+        << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
+        << "  --dwa-velocity-samples N DWA velocity samples\n"
+        << "  --dwa-steering-samples N DWA steering samples\n"
         << "  --start X Y           start cell\n"
         << "  --goal X Y            goal cell\n"
         << "  --max-steps N         controller execution limit\n"
@@ -47,6 +51,10 @@ int main(int argc, char** argv) {
     bool has_inflate = false;
     bool has_smoother = false;
     bool has_smoothing_iterations = false;
+    bool has_local_planner = false;
+    bool has_dwa_prediction_time = false;
+    bool has_dwa_velocity_samples = false;
+    bool has_dwa_steering_samples = false;
     bool has_start = false;
     bool has_goal = false;
     bool has_max_steps = false;
@@ -87,6 +95,21 @@ int main(int argc, char** argv) {
         } else if (arg == "--smooth-iterations" && i + 1 < argc) {
             scenario.pipeline.smoothing_iterations = std::stoi(argv[++i]);
             has_smoothing_iterations = true;
+        } else if (arg == "--local-planner" && i + 1 < argc) {
+            scenario.pipeline.local_planner = argv[++i];
+            has_local_planner = true;
+        } else if (arg == "--dwa-prediction-time" && i + 1 < argc) {
+            scenario.pipeline.dwa_options.prediction_time =
+                std::stod(argv[++i]);
+            has_dwa_prediction_time = true;
+        } else if (arg == "--dwa-velocity-samples" && i + 1 < argc) {
+            scenario.pipeline.dwa_options.velocity_samples =
+                std::stoi(argv[++i]);
+            has_dwa_velocity_samples = true;
+        } else if (arg == "--dwa-steering-samples" && i + 1 < argc) {
+            scenario.pipeline.dwa_options.steering_samples =
+                std::stoi(argv[++i]);
+            has_dwa_steering_samples = true;
         } else if (arg == "--start" && i + 2 < argc) {
             scenario.start = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             has_start = true;
@@ -145,6 +168,17 @@ int main(int argc, char** argv) {
             pipeline_override.smoother;
         if (has_smoothing_iterations) scenario.pipeline.smoothing_iterations =
             pipeline_override.smoothing_iterations;
+        if (has_local_planner) scenario.pipeline.local_planner =
+            pipeline_override.local_planner;
+        if (has_dwa_prediction_time)
+            scenario.pipeline.dwa_options.prediction_time =
+                pipeline_override.dwa_options.prediction_time;
+        if (has_dwa_velocity_samples)
+            scenario.pipeline.dwa_options.velocity_samples =
+                pipeline_override.dwa_options.velocity_samples;
+        if (has_dwa_steering_samples)
+            scenario.pipeline.dwa_options.steering_samples =
+                pipeline_override.dwa_options.steering_samples;
         if (has_max_steps) scenario.pipeline.max_steps =
             pipeline_override.max_steps;
         if (has_velocity) scenario.pipeline.trajectory_options.target_velocity =

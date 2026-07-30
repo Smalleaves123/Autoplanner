@@ -37,11 +37,13 @@ add_subdirectory(autoplanner)
 add_subdirectory(autompc)
 
 add_library(robotnav_pipeline STATIC
+    src/dwa_local_planner.cpp
     src/dynamic_navigation_pipeline.cpp
     src/navigation_pipeline.cpp
     src/navigation_trace.cpp
     src/safety_supervisor.cpp
     src/scenario_config.cpp
+    src/space_time_astar.cpp
 )
 target_include_directories(robotnav_pipeline PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

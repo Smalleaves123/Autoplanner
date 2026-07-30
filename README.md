@@ -251,6 +251,19 @@ The output directory contains `trace.csv` with state and command samples and
 `--planner`, `--controller`, `--start`, and `--goal` to override scenario
 values for a quick local experiment.
 
+An optional Dynamic Window Approach local planner can be inserted between the
+controller and simulator. It samples velocity/steering commands, rolls them out
+against the active collision checker, and executes the best collision-free
+candidate:
+
+```bash
+./build/apps/navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 \
+    --local-planner dwa --dwa-prediction-time 0.8 \
+    --output-dir /tmp/robotnav-dwa
+```
+
 The existing Python orchestrator can select this unified C++ engine while
 keeping its legacy planner/tracker mode available:
 
@@ -293,6 +306,20 @@ check so the demonstration does not intentionally create an unsolvable map.
 To model a simple moving obstacle, use `--moving-obstacle START END X Y DX DY`;
 the obstacle occupies `(X, Y)` at `START` and then moves by `(DX, DY)` cells
 per frame through `END`.
+For prediction-aware planning, set the dynamic C++ planner to
+`space_time_astar`; it plans in `(x, y, t)` and treats the moving obstacle
+model as future occupancy:
+
+```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --planner space_time_astar --prediction-horizon 80 \
+    --start 1 1 --goal 20 20 --controller stanley \
+    --frames 20 --steps-per-frame 40 --no-auto-obstacles \
+    --moving-obstacle 1 3 3 10 1 0 \
+    --output-dir /tmp/robotnav-spacetime
+```
+
 For externally driven updates, repeat `--obstacle FRAME X Y` (or use
 `--clear-obstacle FRAME X Y`) and disable the demo generator with
 `--no-auto-obstacles`:
@@ -310,6 +337,14 @@ When invoking the lower-level dynamic C++ CLI directly, use the same
 visualizer on its existing trace artifacts:
 
 ```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 --controller stanley \
+    --frames 20 --steps-per-frame 40 --no-auto-obstacles \
+    --moving-obstacle 1 3 3 10 1 0 \
+    --local-planner dwa --dwa-prediction-time 0.8 \
+    --output-dir /tmp/robotnav-dynamic
+
 python autoplanner/scripts/visualize_navigation_trace.py \
     --map autoplanner/data/maps/simple_50x50.txt \
     --trace /tmp/robotnav-dynamic/trace.csv \

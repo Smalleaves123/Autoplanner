@@ -94,6 +94,7 @@ PipelineResult NavigationPipeline::run(
     result.metrics.status = StatusCode::InternalError;
     result.metrics.footprint = config.footprint;
     result.metrics.smoother = config.smoother;
+    result.metrics.local_planner = config.local_planner;
 
     auto fail = [&result](StatusCode status, const std::string& message) {
         result.metrics.status = status;
@@ -115,6 +116,17 @@ PipelineResult NavigationPipeline::run(
     if (config.max_steps == 0 || config.simulation_options.dt <= 0.0) {
         return fail(StatusCode::InvalidConfiguration,
                     "pipeline step configuration is invalid");
+    }
+    if (config.local_planner != "none" && config.local_planner != "dwa") {
+        return fail(StatusCode::InvalidConfiguration,
+                    "unsupported local planner: " + config.local_planner);
+    }
+    if (config.local_planner == "dwa" &&
+        (config.dwa_options.prediction_time <= 0.0 ||
+         config.dwa_options.velocity_samples <= 0 ||
+         config.dwa_options.steering_samples <= 0)) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "invalid DWA local planner configuration");
     }
 
     autoplanner::RobotFootprint footprint;
@@ -275,6 +287,12 @@ PipelineResult NavigationPipeline::run(
 
     autompc::KinematicBicycleSimulator simulator(
         state, config.simulation_options);
+    std::unique_ptr<DwaLocalPlanner> dwa;
+    if (config.local_planner == "dwa") {
+        dwa = std::make_unique<DwaLocalPlanner>(
+            *collision_checker, config.simulation_options,
+            config.dwa_options);
+    }
     std::unique_ptr<autompc::PIDController> pid;
     std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
     std::unique_ptr<autompc::StanleyController> stanley;
@@ -326,6 +344,23 @@ PipelineResult NavigationPipeline::run(
 #ifdef AUTOMPC_HAS_EIGEN
             command = mpc->compute(state, result.trajectory, reference.v);
 #endif
+        }
+
+        if (dwa) {
+            const auto decision = dwa->computeCommand(
+                state, simulator.steering(), result.trajectory, command);
+            if (!decision.feasible) {
+                result.metrics.safe_stop = true;
+                return fail(StatusCode::ControllerInfeasible,
+                            "DWA found no collision-free local command");
+            }
+            if (std::abs(decision.command.velocity - command.velocity) >
+                    1e-9 ||
+                std::abs(decision.command.steering - command.steering) >
+                    1e-9) {
+                ++result.metrics.local_planner_adjustments;
+            }
+            command = decision.command;
         }
 
         const auto command_decision = supervisor.validateCommand(command);
@@ -408,6 +443,8 @@ bool savePipelineMetricsJson(const PipelineResult& result,
            << escapeJsonString(result.metrics.footprint) << "\",\n"
            << "  \"smoother\": \""
            << escapeJsonString(result.metrics.smoother) << "\",\n"
+           << "  \"local_planner\": \""
+           << escapeJsonString(result.metrics.local_planner) << "\",\n"
            << "  \"success\": "
            << (result.metrics.status == StatusCode::Success ? "true" : "false")
            << ",\n"
@@ -418,6 +455,8 @@ bool savePipelineMetricsJson(const PipelineResult& result,
            << "  \"safe_stop\": "
            << (result.metrics.safe_stop ? "true" : "false") << ",\n"
            << "  \"controller_trace_steps\": " << result.metrics.steps << ",\n"
+           << "  \"local_planner_adjustments\": "
+           << result.metrics.local_planner_adjustments << ",\n"
            << "  \"planning_time_ms\": ";
     writeJsonNumber(output, result.metrics.planning_time_ms);
     output << ",\n  \"path_length\": ";

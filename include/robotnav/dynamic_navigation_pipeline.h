@@ -8,6 +8,7 @@
 #include "autoplanner/core/path.h"
 #include "autoplanner/core/planner_result.h"
 #include "autoplanner/core/point.h"
+#include "robotnav/dynamic_obstacle_prediction.h"
 #include "robotnav/navigation_trace.h"
 #include "robotnav/pipeline_config.h"
 #include "robotnav/status.h"
@@ -20,14 +21,6 @@ struct DynamicObstacleUpdate {
     bool occupied = true;
 };
 
-struct MovingObstacle {
-    std::size_t start_frame = 0;
-    std::size_t end_frame = 0;
-    autoplanner::Point2i start_cell{-1, -1};
-    int dx_per_frame = 0;
-    int dy_per_frame = 0;
-};
-
 struct DynamicPipelineConfig {
     PipelineConfig pipeline;
     std::size_t frames = 5;
@@ -35,6 +28,7 @@ struct DynamicPipelineConfig {
     std::size_t obstacle_insertion_ahead = 5;
     std::size_t auto_obstacle_margin_cells = 1;
     std::size_t max_auto_obstacles = 1;
+    std::size_t prediction_horizon_frames = 120;
     bool auto_insert_obstacles = true;
     bool compare_astar = true;
     std::vector<DynamicObstacleUpdate> obstacle_updates;
@@ -61,16 +55,20 @@ struct DynamicPipelineMetrics {
     StatusCode status = StatusCode::InternalError;
     std::string footprint = "point";
     std::string smoother = "none";
+    std::string local_planner = "none";
     std::size_t frames_requested = 0;
     std::size_t frames_run = 0;
     std::size_t steps = 0;
     std::size_t replanning_count = 0;
+    std::size_t space_time_planning_count = 0;
+    std::size_t local_planner_adjustments = 0;
     std::size_t external_update_count = 0;
     std::size_t moving_obstacle_update_count = 0;
     std::size_t moving_obstacle_conflict_count = 0;
     std::size_t dstar_failure_count = 0;
     std::size_t astar_fallback_count = 0;
     std::size_t collision_steps = 0;
+    double total_space_time_planning_time_ms = 0.0;
     double total_dstar_replanning_time_ms = 0.0;
     double total_astar_replanning_time_ms = 0.0;
     double max_control_jump = 0.0;

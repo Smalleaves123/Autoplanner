@@ -24,6 +24,8 @@ bool loadScenarioConfig(const std::string& file_path,
         "robot.footprint", pipeline.footprint);
     pipeline.smoother = loader.getString(
         "smoothing.name", pipeline.smoother);
+    pipeline.local_planner = loader.getString(
+        "local_planner.name", pipeline.local_planner);
     pipeline.robot_radius = loader.getDouble(
         "robot.radius", pipeline.robot_radius);
     pipeline.robot_length = loader.getDouble(
@@ -86,6 +88,28 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.simulation_options.max_steering_rate = loader.getDouble(
         "simulation.max_steering_rate",
         pipeline.simulation_options.max_steering_rate);
+
+    pipeline.dwa_options.prediction_time = loader.getDouble(
+        "local_planner.dwa.prediction_time",
+        pipeline.dwa_options.prediction_time);
+    pipeline.dwa_options.velocity_samples = loader.getInt(
+        "local_planner.dwa.velocity_samples",
+        pipeline.dwa_options.velocity_samples);
+    pipeline.dwa_options.steering_samples = loader.getInt(
+        "local_planner.dwa.steering_samples",
+        pipeline.dwa_options.steering_samples);
+    pipeline.dwa_options.trajectory_weight = loader.getDouble(
+        "local_planner.dwa.trajectory_weight",
+        pipeline.dwa_options.trajectory_weight);
+    pipeline.dwa_options.heading_weight = loader.getDouble(
+        "local_planner.dwa.heading_weight",
+        pipeline.dwa_options.heading_weight);
+    pipeline.dwa_options.speed_weight = loader.getDouble(
+        "local_planner.dwa.speed_weight",
+        pipeline.dwa_options.speed_weight);
+    pipeline.dwa_options.command_weight = loader.getDouble(
+        "local_planner.dwa.command_weight",
+        pipeline.dwa_options.command_weight);
 
     pipeline.safety_options.goal_tolerance = loader.getDouble(
         "safety.goal_tolerance", pipeline.safety_options.goal_tolerance);

@@ -13,6 +13,7 @@
 #include "robotnav/navigation_trace.h"
 #include "robotnav/safety_supervisor.h"
 #include "robotnav/scenario_config.h"
+#include "robotnav/space_time_astar.h"
 
 namespace {
 
@@ -34,6 +35,47 @@ TEST(SafetySupervisorTest, RejectsInvalidTrajectoryAndCommand) {
     EXPECT_EQ(supervisor.validateCommand(
                   {std::numeric_limits<double>::quiet_NaN(), 0.0}).status,
               robotnav::StatusCode::ControllerInfeasible);
+}
+
+TEST(SpaceTimeAStarTest, AvoidsPredictedMovingObstacle) {
+    const auto path = std::filesystem::temp_directory_path() /
+                      "robotnav_spacetime_corridor.txt";
+    {
+        std::ofstream output(path);
+        ASSERT_TRUE(output.is_open());
+        output << "11111\n"
+               << "11111\n"
+               << "10001\n"
+               << "11111\n"
+               << "11111\n";
+    }
+
+    autoplanner::GridMap map;
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
+    const std::vector<robotnav::MovingObstacle> obstacles = {
+        {1, 3, {2, 2}, 0, 0}};
+
+    EXPECT_TRUE(robotnav::isPredictedOccupied(obstacles, {2, 2}, 1));
+    EXPECT_FALSE(robotnav::isPredictedOccupied(obstacles, {2, 2}, 4));
+
+    const robotnav::SpaceTimeAStarPlanner short_horizon({
+        false, true, 2});
+    EXPECT_FALSE(short_horizon.plan(
+        map, {1, 2}, {3, 2}, obstacles, 0).success);
+
+    const robotnav::SpaceTimeAStarPlanner long_horizon({
+        false, true, 6});
+    const auto result = long_horizon.plan(
+        map, {1, 2}, {3, 2}, obstacles, 0);
+    EXPECT_EQ(result.planner_name, "space_time_astar");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_FALSE(result.path.empty());
+    EXPECT_GT(result.path.size(), 3u);
+    EXPECT_EQ(result.path.front().x, 1.0);
+    EXPECT_EQ(result.path.back().x, 3.0);
+
+    std::error_code error;
+    std::filesystem::remove(path, error);
 }
 
 TEST(NavigationPipelineTest, RunsPlanningTrackingAndTrace) {
@@ -78,6 +120,28 @@ TEST(NavigationPipelineTest, SupportsRectangleFootprintAndSmoothing) {
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_EQ(result.metrics.footprint, "rectangle");
     EXPECT_EQ(result.metrics.smoother, "shortcut");
+}
+
+TEST(NavigationPipelineTest, SupportsDwaLocalPlanner) {
+    const auto map = loadSimpleMap();
+    robotnav::PipelineConfig config;
+    config.planner = "astar";
+    config.controller = "stanley";
+    config.local_planner = "dwa";
+    config.dwa_options.prediction_time = 0.8;
+    config.dwa_options.velocity_samples = 5;
+    config.dwa_options.steering_samples = 7;
+    config.max_steps = 3000;
+
+    const robotnav::NavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_EQ(result.metrics.local_planner, "dwa");
+    EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
 }
 
 TEST(DynamicNavigationPipelineTest, ReplansAndReachesGoalWithoutCollision) {
@@ -184,6 +248,57 @@ TEST(DynamicNavigationPipelineTest, PreservesExternalOccupancyWhenObstacleMoves)
     EXPECT_FALSE(result.metrics.safe_stop);
 }
 
+TEST(DynamicNavigationPipelineTest, SupportsDwaWithMovingObstacles) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.local_planner = "dwa";
+    config.pipeline.dwa_options.prediction_time = 0.8;
+    config.pipeline.max_steps = 1200;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({1, 3, {3, 10}, 1, 0});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_EQ(result.metrics.local_planner, "dwa");
+    EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
+    EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+}
+
+TEST(DynamicNavigationPipelineTest, SupportsSpaceTimeAStarPrediction) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.planner = "space_time_astar";
+    config.pipeline.controller = "stanley";
+    config.pipeline.max_steps = 1200;
+    config.prediction_horizon_frames = 80;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({1, 3, {3, 10}, 1, 0});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_EQ(result.initial_planning.planner_name, "space_time_astar");
+    EXPECT_GT(result.metrics.space_time_planning_count, 0u);
+    EXPECT_GT(result.metrics.total_space_time_planning_time_ms, 0.0);
+    EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+}
+
 TEST(ScenarioConfigTest, LoadsPipelineValues) {
     const auto path = std::filesystem::temp_directory_path() /
                       "robotnav_pipeline_test.yaml";
@@ -209,6 +324,12 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "smoothing:\n"
                << "  name: shortcut\n"
                << "  iterations: 12\n"
+               << "local_planner:\n"
+               << "  name: dwa\n"
+               << "  dwa:\n"
+               << "    prediction_time: 0.7\n"
+               << "    velocity_samples: 3\n"
+               << "    steering_samples: 5\n"
                << "pipeline:\n"
                << "  max_steps: 123\n"
                << "safety:\n"
@@ -227,6 +348,10 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(scenario.pipeline.robot_width, 0.5);
     EXPECT_EQ(scenario.pipeline.smoother, "shortcut");
     EXPECT_EQ(scenario.pipeline.smoothing_iterations, 12);
+    EXPECT_EQ(scenario.pipeline.local_planner, "dwa");
+    EXPECT_DOUBLE_EQ(scenario.pipeline.dwa_options.prediction_time, 0.7);
+    EXPECT_EQ(scenario.pipeline.dwa_options.velocity_samples, 3);
+    EXPECT_EQ(scenario.pipeline.dwa_options.steering_samples, 5);
     EXPECT_EQ(scenario.pipeline.max_steps, 123u);
     EXPECT_FALSE(scenario.pipeline.safety_options.enforce_collision);
 

@@ -27,7 +27,12 @@ void printHelp() {
         << "  --robot-width N       rectangular footprint width\n"
         << "  --inflate             inflate planning map\n"
         << "  --smooth NAME         none|shortcut\n"
+        << "  --local-planner NAME  none|dwa\n"
+        << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
+        << "  --dwa-velocity-samples N DWA velocity samples\n"
+        << "  --dwa-steering-samples N DWA steering samples\n"
         << "  --velocity N          target trajectory velocity\n"
+        << "  --prediction-horizon N  space-time planner horizon frames\n"
         << "  --frames N            dynamic obstacle update frames\n"
         << "  --steps-per-frame N   control cycles per frame\n"
         << "  --obstacle-ahead N    path samples before inserted obstacle\n"
@@ -59,6 +64,10 @@ int main(int argc, char** argv) {
     bool has_width = false;
     bool has_inflate = false;
     bool has_smoother = false;
+    bool has_local_planner = false;
+    bool has_dwa_prediction_time = false;
+    bool has_dwa_velocity_samples = false;
+    bool has_dwa_steering_samples = false;
     bool has_velocity = false;
     std::string map_override;
     autoplanner::Point2i start_override;
@@ -71,6 +80,10 @@ int main(int argc, char** argv) {
     double width_override = 0.0;
     bool inflate_override = false;
     std::string smoother_override;
+    std::string local_planner_override;
+    double dwa_prediction_time_override = 0.0;
+    int dwa_velocity_samples_override = 0;
+    int dwa_steering_samples_override = 0;
     double velocity_override = 0.0;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
     std::vector<robotnav::MovingObstacle> moving_obstacles;
@@ -115,9 +128,24 @@ int main(int argc, char** argv) {
         } else if (arg == "--smooth" && i + 1 < argc) {
             smoother_override = argv[++i];
             has_smoother = true;
+        } else if (arg == "--local-planner" && i + 1 < argc) {
+            local_planner_override = argv[++i];
+            has_local_planner = true;
+        } else if (arg == "--dwa-prediction-time" && i + 1 < argc) {
+            dwa_prediction_time_override = std::stod(argv[++i]);
+            has_dwa_prediction_time = true;
+        } else if (arg == "--dwa-velocity-samples" && i + 1 < argc) {
+            dwa_velocity_samples_override = std::stoi(argv[++i]);
+            has_dwa_velocity_samples = true;
+        } else if (arg == "--dwa-steering-samples" && i + 1 < argc) {
+            dwa_steering_samples_override = std::stoi(argv[++i]);
+            has_dwa_steering_samples = true;
         } else if (arg == "--velocity" && i + 1 < argc) {
             velocity_override = std::stod(argv[++i]);
             has_velocity = true;
+        } else if (arg == "--prediction-horizon" && i + 1 < argc) {
+            dynamic.prediction_horizon_frames =
+                static_cast<std::size_t>(std::stoul(argv[++i]));
         } else if (arg == "--frames" && i + 1 < argc) {
             dynamic.frames = static_cast<std::size_t>(std::stoul(argv[++i]));
         } else if (arg == "--steps-per-frame" && i + 1 < argc) {
@@ -188,6 +216,17 @@ int main(int argc, char** argv) {
     if (has_width) scenario.pipeline.robot_width = width_override;
     if (has_inflate) scenario.pipeline.inflate_map = inflate_override;
     if (has_smoother) scenario.pipeline.smoother = smoother_override;
+    if (has_local_planner) scenario.pipeline.local_planner =
+        local_planner_override;
+    if (has_dwa_prediction_time)
+        scenario.pipeline.dwa_options.prediction_time =
+            dwa_prediction_time_override;
+    if (has_dwa_velocity_samples)
+        scenario.pipeline.dwa_options.velocity_samples =
+            dwa_velocity_samples_override;
+    if (has_dwa_steering_samples)
+        scenario.pipeline.dwa_options.steering_samples =
+            dwa_steering_samples_override;
     if (has_velocity) {
         scenario.pipeline.trajectory_options.target_velocity = velocity_override;
     }

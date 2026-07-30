@@ -6,6 +6,7 @@
 #include "autompc/simulation/kinematic_bicycle.h"
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autoplanner/core/planner_factory.h"
+#include "robotnav/dwa_local_planner.h"
 #include "robotnav/safety_supervisor.h"
 
 namespace robotnav {
@@ -18,6 +19,7 @@ struct PipelineConfig {
     std::string controller = "stanley";
     std::string footprint = "point";
     std::string smoother = "none";
+    std::string local_planner = "none";
 
     double robot_radius = 0.0;
     double robot_length = 0.0;
@@ -29,6 +31,7 @@ struct PipelineConfig {
     autompc::TrajectoryOptions trajectory_options;
     autompc::SimulationOptions simulation_options;
     SafetyOptions safety_options;
+    DwaOptions dwa_options;
 
     std::size_t max_steps = 2000;
 };

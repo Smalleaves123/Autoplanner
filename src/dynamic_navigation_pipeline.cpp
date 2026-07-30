@@ -23,6 +23,7 @@
 #include "autoplanner/planners/graph_search/dstar_lite.h"
 #include "autoplanner/smoothing/shortcut_smoother.h"
 #include "robotnav/safety_supervisor.h"
+#include "robotnav/space_time_astar.h"
 
 namespace robotnav {
 namespace {
@@ -196,15 +197,6 @@ bool containsCell(const std::vector<autoplanner::Point2i>& cells,
                        });
 }
 
-autoplanner::Point2i movingObstacleCell(
-    const MovingObstacle& obstacle,
-    std::size_t frame) {
-    const auto delta = static_cast<int>(frame - obstacle.start_frame);
-    return {
-        obstacle.start_cell.x + obstacle.dx_per_frame * delta,
-        obstacle.start_cell.y + obstacle.dy_per_frame * delta};
-}
-
 bool insertObstacleAhead(autoplanner::GridMap& map,
                          const autoplanner::Path2d& path,
                          const autompc::State& state,
@@ -308,6 +300,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     result.metrics.status = StatusCode::InternalError;
     result.metrics.footprint = config.pipeline.footprint;
     result.metrics.smoother = config.pipeline.smoother;
+    result.metrics.local_planner = config.pipeline.local_planner;
     result.metrics.frames_requested = config.frames;
 
     auto fail = [&result](StatusCode status, const std::string& message) {
@@ -320,6 +313,25 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         config.steps_per_frame == 0 || config.pipeline.max_steps == 0) {
         return fail(StatusCode::InvalidConfiguration,
                     "dynamic pipeline configuration is invalid");
+    }
+    if (config.pipeline.local_planner != "none" &&
+        config.pipeline.local_planner != "dwa") {
+        return fail(StatusCode::InvalidConfiguration,
+                    "unsupported local planner: " +
+                        config.pipeline.local_planner);
+    }
+    if (config.pipeline.local_planner == "dwa" &&
+        (config.pipeline.dwa_options.prediction_time <= 0.0 ||
+         config.pipeline.dwa_options.velocity_samples <= 0 ||
+         config.pipeline.dwa_options.steering_samples <= 0)) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "invalid DWA local planner configuration");
+    }
+    const bool use_space_time_astar =
+        config.pipeline.planner == "space_time_astar";
+    if (use_space_time_astar && config.prediction_horizon_frames == 0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "space-time planner prediction horizon is invalid");
     }
     if (!map.isFree(start.x, start.y)) {
         return fail(StatusCode::InvalidStart, "start cell is invalid");
@@ -344,10 +356,25 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         config.pipeline.planner_options.allow_diagonal);
     autoplanner::AStarPlanner astar(
         config.pipeline.planner_options.allow_diagonal);
-    auto initial = dstar.plan(geometry.planning_map, start, goal);
+    SpaceTimeAStarPlanner space_time_astar({
+        config.pipeline.planner_options.allow_diagonal,
+        true,
+        config.prediction_horizon_frames});
+    auto initial = use_space_time_astar
+        ? space_time_astar.plan(geometry.planning_map, start, goal,
+                                config.moving_obstacles, 0)
+        : dstar.plan(geometry.planning_map, start, goal);
+    if (use_space_time_astar) {
+        ++result.metrics.space_time_planning_count;
+        result.metrics.total_space_time_planning_time_ms +=
+            initial.planning_time_ms;
+    }
     result.initial_planning = initial;
     if (!initial.success || initial.path.empty()) {
-        return fail(initial.statusCode(), "initial D* Lite planning failed");
+        return fail(initial.statusCode(),
+                    use_space_time_astar
+                        ? "initial space-time planning failed"
+                        : "initial D* Lite planning failed");
     }
     autoplanner::Path2d current_path = initial.path;
     if (!preparePath(dynamic_map, config.pipeline, geometry,
@@ -385,6 +412,12 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     }
     autompc::KinematicBicycleSimulator simulator(
         state, config.pipeline.simulation_options);
+    std::unique_ptr<DwaLocalPlanner> dwa;
+    if (config.pipeline.local_planner == "dwa") {
+        dwa = std::make_unique<DwaLocalPlanner>(
+            *geometry.checker, config.pipeline.simulation_options,
+            config.pipeline.dwa_options);
+    }
     std::unique_ptr<autompc::PIDController> pid;
     std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
     std::unique_ptr<autompc::StanleyController> stanley;
@@ -469,9 +502,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             const bool active_this_frame =
                 moving.end_frame >= moving.start_frame &&
                 frame >= moving.start_frame && frame <= moving.end_frame;
-            const auto current = active_this_frame
-                ? movingObstacleCell(moving, frame)
-                : autoplanner::Point2i{-1, -1};
+            autoplanner::Point2i current{-1, -1};
+            if (active_this_frame) {
+                predictMovingObstacleCell(moving, frame, current);
+            }
             const auto previous = active_moving_cells[index];
             if (dynamic_map.isInside(previous.x, previous.y) &&
                 !sameCell(previous, current)) {
@@ -562,12 +596,20 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                                          current_path)) {
             const auto current = stateCell(state, geometry.planning_map);
             const auto dstar_begin = std::chrono::steady_clock::now();
-            const auto dstar_result = dstar.replan(
-                geometry.planning_map, current);
+            const auto dstar_result = use_space_time_astar
+                ? space_time_astar.plan(
+                      geometry.planning_map, current, goal,
+                      config.moving_obstacles, frame)
+                : dstar.replan(geometry.planning_map, current);
             const auto dstar_end = std::chrono::steady_clock::now();
             dstar_ms = std::chrono::duration<double, std::milli>(
                 dstar_end - dstar_begin).count();
-            result.metrics.total_dstar_replanning_time_ms += dstar_ms;
+            if (use_space_time_astar) {
+                ++result.metrics.space_time_planning_count;
+                result.metrics.total_space_time_planning_time_ms += dstar_ms;
+            } else {
+                result.metrics.total_dstar_replanning_time_ms += dstar_ms;
+            }
 
             bool used_astar_fallback = false;
             if (config.compare_astar) {
@@ -587,7 +629,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
 
             ++result.metrics.replanning_count;
-            if (!dstar_result.success) ++result.metrics.dstar_failure_count;
+            if (!dstar_result.success && !use_space_time_astar) {
+                ++result.metrics.dstar_failure_count;
+            }
             if ((!dstar_result.success && !used_astar_fallback) ||
                 (dstar_result.success && dstar_result.path.empty())) {
                 result.metrics.safe_stop = true;
@@ -603,7 +647,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 }
                 result.metrics.collision_steps += 1;
                 return fail(StatusCode::ReplanningFailed,
-                            "D* Lite failed; vehicle entered safe stop");
+                            use_space_time_astar
+                                ? "space-time planner failed; vehicle entered safe stop"
+                                : "D* Lite failed; vehicle entered safe stop");
             }
 
             if (dstar_result.success) current_path = dstar_result.path;
@@ -644,6 +690,22 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
 #ifdef AUTOMPC_HAS_EIGEN
                 command = mpc->compute(state, trajectory, reference.v);
 #endif
+            }
+            if (dwa) {
+                const auto decision = dwa->computeCommand(
+                    state, simulator.steering(), trajectory, command);
+                if (!decision.feasible) {
+                    result.metrics.safe_stop = true;
+                    return fail(StatusCode::ControllerInfeasible,
+                                "DWA found no collision-free local command");
+                }
+                if (std::abs(decision.command.velocity - command.velocity) >
+                        1e-9 ||
+                    std::abs(decision.command.steering - command.steering) >
+                        1e-9) {
+                    ++result.metrics.local_planner_adjustments;
+                }
+                command = decision.command;
             }
             const auto command_check = supervisor.validateCommand(command);
             if (!command_check.safe) {
@@ -731,6 +793,8 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << escapeJsonString(result.metrics.footprint) << "\",\n"
            << "  \"smoother\": \""
            << escapeJsonString(result.metrics.smoother) << "\",\n"
+           << "  \"local_planner\": \""
+           << escapeJsonString(result.metrics.local_planner) << "\",\n"
            << "  \"success\": "
            << (result.metrics.status == StatusCode::Success ? "true" : "false")
            << ",\n"
@@ -740,6 +804,10 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << "  \"steps\": " << result.metrics.steps << ",\n"
            << "  \"replanning_count\": "
            << result.metrics.replanning_count << ",\n"
+           << "  \"space_time_planning_count\": "
+           << result.metrics.space_time_planning_count << ",\n"
+           << "  \"local_planner_adjustments\": "
+           << result.metrics.local_planner_adjustments << ",\n"
            << "  \"external_update_count\": "
            << result.metrics.external_update_count << ",\n"
            << "  \"moving_obstacle_update_count\": "
@@ -756,7 +824,9 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << (result.metrics.goal_reached ? "true" : "false") << ",\n"
            << "  \"safe_stop\": "
            << (result.metrics.safe_stop ? "true" : "false") << ",\n"
-           << "  \"total_dstar_replanning_time_ms\": ";
+           << "  \"total_space_time_planning_time_ms\": ";
+    writeJsonNumber(output, result.metrics.total_space_time_planning_time_ms);
+    output << ",\n  \"total_dstar_replanning_time_ms\": ";
     writeJsonNumber(output, result.metrics.total_dstar_replanning_time_ms);
     output << ",\n  \"total_astar_replanning_time_ms\": ";
     writeJsonNumber(output, result.metrics.total_astar_replanning_time_ms);
