@@ -9,6 +9,7 @@
 #include "autoplanner/smoothing/bezier_smoother.h"
 #include "autoplanner/smoothing/bspline_smoother.h"
 #include "autoplanner/smoothing/curvature_constrained_smoother.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner;
 
@@ -107,8 +108,8 @@ TEST_F(SmoothingTest, BSplineSmootherWorks) {
 }
 
 TEST_F(SmoothingTest, CurvatureConstrainedSmootherReducesSharpTurn) {
-    const auto map_path = std::filesystem::temp_directory_path() /
-                          "autoplanner_curvature_smoothing_map.txt";
+    const auto map_path = autoplanner_test::artifactPath(
+        "autoplanner_curvature_smoothing_map.txt");
     {
         std::ofstream output(map_path);
         ASSERT_TRUE(output.is_open());

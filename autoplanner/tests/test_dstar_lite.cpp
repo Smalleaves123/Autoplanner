@@ -5,6 +5,7 @@
 #include "autoplanner/core/grid_map.h"
 #include "autoplanner/planners/graph_search/dstar_lite.h"
 #include "autoplanner/planners/graph_search/astar.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner;
 
@@ -95,12 +96,14 @@ TEST(DStarLite, FourConnectedWorks) {
 }
 
 TEST(DStarLite, ReplansAfterObstacleUpdate) {
-    std::ofstream file("/tmp/dstar_dynamic_map.txt");
+    const auto path = autoplanner_test::artifactPath(
+        "dstar_dynamic_map.txt");
+    std::ofstream file(path);
     for (int y = 0; y < 20; ++y) file << std::string(20, '0') << '\n';
     file.close();
 
     GridMap map;
-    ASSERT_TRUE(map.loadFromTxt("/tmp/dstar_dynamic_map.txt"));
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
     DStarLitePlanner planner(true);
     const Point2i start{1, 1};
     const Point2i goal{18, 18};

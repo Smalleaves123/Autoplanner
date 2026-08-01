@@ -3,6 +3,7 @@
 #include <fstream>
 
 #include "autoplanner/core/grid_map.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner;
 
@@ -68,7 +69,8 @@ TEST(GridMap, LoadNonexistentFile) {
 }
 
 TEST(GridMap, InflationUsesCellGeometry) {
-    const std::string path = "/tmp/robotnav_inflation_geometry.txt";
+    const auto path = autoplanner_test::artifactPath(
+        "robotnav_inflation_geometry.txt");
     std::ofstream output(path);
     output << "00000\n"
            << "00000\n"
@@ -78,13 +80,13 @@ TEST(GridMap, InflationUsesCellGeometry) {
     output.close();
 
     GridMap small_radius;
-    ASSERT_TRUE(small_radius.loadFromTxt(path));
+    ASSERT_TRUE(small_radius.loadFromTxt(path.string()));
     small_radius.inflateObstacles(0.4);
     EXPECT_TRUE(small_radius.isFree(1, 2));
     EXPECT_TRUE(small_radius.isOccupied(2, 2));
 
     GridMap cell_radius;
-    ASSERT_TRUE(cell_radius.loadFromTxt(path));
+    ASSERT_TRUE(cell_radius.loadFromTxt(path.string()));
     cell_radius.inflateObstacles(0.5);
     EXPECT_TRUE(cell_radius.isOccupied(1, 2));
 }

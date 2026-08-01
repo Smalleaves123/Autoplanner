@@ -1,8 +1,31 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <fstream>
+#include <filesystem>
 
 #include "autompc/autompc.h"
+
+namespace {
+
+std::filesystem::path artifactPath(const std::string& filename) {
+    const auto directory = std::filesystem::path("test_artifacts") /
+                           "autompc";
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    return directory / filename;
+}
+
+struct ArtifactCleanup {
+    ~ArtifactCleanup() {
+        std::error_code error;
+        std::filesystem::remove_all(
+            std::filesystem::path("test_artifacts") / "autompc", error);
+    }
+};
+
+const ArtifactCleanup artifact_cleanup{};
+
+}  // namespace
 
 using namespace autompc;
 
@@ -31,13 +54,13 @@ TEST(Trajectory, Interpolate) {
 }
 
 TEST(Trajectory, LoadPathCsv) {
-    const std::string path = "/tmp/autompc_test_path.csv";
+    const auto path = artifactPath("autompc_test_path.csv");
     std::ofstream out(path);
     out << "x,y\n0,0\n3,0\n3,4\n";
     out.close();
 
     Trajectory trajectory;
-    ASSERT_TRUE(loadPathCsv(path, 2.0, trajectory));
+    ASSERT_TRUE(loadPathCsv(path.string(), 2.0, trajectory));
     ASSERT_GT(trajectory.size(), 3u);
     EXPECT_DOUBLE_EQ(trajectory.front().x, 0.0);
     EXPECT_DOUBLE_EQ(trajectory.back().x, 3.0);

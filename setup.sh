@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-cd /Users/aiziqi/Desktop/RobotNav
+cd -- "$(dirname -- "$0")"
 
 echo "=== Cleaning old git repos and builds ==="
 rm -rf autompc/.git autoplanner/.git
@@ -41,6 +41,6 @@ git log --oneline
 
 echo ""
 echo "Done. To push:"
-echo "  cd /Users/aiziqi/Desktop/RobotNav"
+echo "  cd <repository-root>"
 echo "  git remote add origin <your-repo-url>"
 echo "  git push -u origin main"

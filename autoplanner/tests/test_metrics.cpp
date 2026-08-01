@@ -8,6 +8,7 @@
 #include "autoplanner/core/planner_result.h"
 #include "autoplanner/metrics/path_metrics.h"
 #include "autoplanner/planners/graph_search/astar.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner;
 
@@ -108,8 +109,9 @@ TEST(PlannerResult, MetricsJsonEscapesTextAndRejectsNonFiniteNumbers) {
     result.minimum_obstacle_distance =
         std::numeric_limits<double>::infinity();
 
-    const std::string output_path = "/tmp/robotnav_metrics.json";
-    ASSERT_TRUE(saveMetricsJson(result, output_path));
+    const auto output_path = autoplanner_test::artifactPath(
+        "robotnav_metrics.json");
+    ASSERT_TRUE(saveMetricsJson(result, output_path.string()));
 
     std::ifstream input(output_path);
     const std::string json((std::istreambuf_iterator<char>(input)),

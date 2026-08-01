@@ -2,12 +2,14 @@
 #include <fstream>
 
 #include "autoplanner/io/config_loader.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner::io;
 
 TEST(ConfigLoader, LoadFile) {
     // Write a temporary config file
-    std::ofstream fout("/tmp/test_config.txt");
+    const auto path = autoplanner_test::artifactPath("test_config.txt");
+    std::ofstream fout(path);
     fout << "# test config\n";
     fout << "planner = astar\n";
     fout << "resolution = 0.05\n";
@@ -17,7 +19,7 @@ TEST(ConfigLoader, LoadFile) {
     fout.close();
 
     ConfigLoader cfg;
-    ASSERT_TRUE(cfg.load("/tmp/test_config.txt"));
+    ASSERT_TRUE(cfg.load(path.string()));
     EXPECT_EQ(cfg.size(), 5u);
 
     EXPECT_EQ(cfg.getString("planner"), "astar");
@@ -37,17 +39,19 @@ TEST(ConfigLoader, MissingKeyReturnsDefault) {
 }
 
 TEST(ConfigLoader, EmptyFile) {
-    std::ofstream fout("/tmp/test_empty.txt");
+    const auto path = autoplanner_test::artifactPath("test_empty.txt");
+    std::ofstream fout(path);
     fout << "# just a comment\n\n";
     fout.close();
 
     ConfigLoader cfg;
-    ASSERT_TRUE(cfg.load("/tmp/test_empty.txt"));
+    ASSERT_TRUE(cfg.load(path.string()));
     EXPECT_EQ(cfg.size(), 0u);
 }
 
 TEST(ConfigLoader, LoadYamlScalars) {
-    std::ofstream fout("/tmp/test_config.yaml");
+    const auto path = autoplanner_test::artifactPath("test_config.yaml");
+    std::ofstream fout(path);
     fout << "planner: improved_astar\n";
     fout << "map:\n";
     fout << "  resolution: 0.05\n";
@@ -58,7 +62,7 @@ TEST(ConfigLoader, LoadYamlScalars) {
     fout.close();
 
     ConfigLoader cfg;
-    ASSERT_TRUE(cfg.load("/tmp/test_config.yaml"));
+    ASSERT_TRUE(cfg.load(path.string()));
     EXPECT_EQ(cfg.getString("planner"), "improved_astar");
     EXPECT_DOUBLE_EQ(cfg.getDouble("map.resolution"), 0.05);
     EXPECT_DOUBLE_EQ(cfg.getDouble("robot.radius"), 0.25);

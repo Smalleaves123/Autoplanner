@@ -8,6 +8,7 @@
 #include "autoplanner/collision/line_collision_checker.h"
 #include "autoplanner/collision/footprint_collision_checker.h"
 #include "autoplanner/core/grid_map.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner;
 
@@ -84,7 +85,9 @@ TEST_F(CollisionCheckerTest, LineCheckerCustomResolution) {
 }
 
 TEST(FootprintCollisionCheckerTest, CircleRejectsNearbyObstacle) {
-    std::ofstream file("/tmp/footprint_circle_map.txt");
+    const auto path = autoplanner_test::artifactPath(
+        "footprint_circle_map.txt");
+    std::ofstream file(path);
     for (int y = 0; y < 10; ++y) {
         std::string row(10, '0');
         if (y == 5) row[6] = '1';
@@ -93,7 +96,7 @@ TEST(FootprintCollisionCheckerTest, CircleRejectsNearbyObstacle) {
     file.close();
 
     GridMap map;
-    ASSERT_TRUE(map.loadFromTxt("/tmp/footprint_circle_map.txt"));
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
     FootprintCollisionChecker checker(map, RobotFootprint::circle(1.0));
 
     EXPECT_TRUE(checker.isPoseValid({2.0, 5.0, 0.0}));
@@ -101,7 +104,9 @@ TEST(FootprintCollisionCheckerTest, CircleRejectsNearbyObstacle) {
 }
 
 TEST(FootprintCollisionCheckerTest, RectangleUsesHeading) {
-    std::ofstream file("/tmp/footprint_rectangle_map.txt");
+    const auto path = autoplanner_test::artifactPath(
+        "footprint_rectangle_map.txt");
+    std::ofstream file(path);
     for (int y = 0; y < 12; ++y) {
         std::string row(12, '0');
         if (y == 4) row[5] = '1';
@@ -110,7 +115,7 @@ TEST(FootprintCollisionCheckerTest, RectangleUsesHeading) {
     file.close();
 
     GridMap map;
-    ASSERT_TRUE(map.loadFromTxt("/tmp/footprint_rectangle_map.txt"));
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
     FootprintCollisionChecker checker(
         map, RobotFootprint::rectangle(4.0, 1.0));
 

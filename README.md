@@ -260,7 +260,7 @@ segments and fixed endpoints:
     --scenario autoplanner/data/configs/navigation_pipeline.yaml \
     --start 1 1 --goal 20 20 \
     --smooth curvature --smooth-max-curvature 0.3 \
-    --output-dir /tmp/robotnav-curvature
+    --output-dir autoplanner/results/robotnav-curvature
 ```
 
 An optional Dynamic Window Approach local planner can be inserted between the
@@ -273,7 +273,7 @@ candidate:
     --scenario autoplanner/data/configs/navigation_pipeline.yaml \
     --start 1 1 --goal 20 20 \
     --local-planner dwa --dwa-prediction-time 0.8 \
-    --output-dir /tmp/robotnav-dwa
+    --output-dir autoplanner/results/robotnav-dwa
 ```
 
 The existing Python orchestrator can select this unified C++ engine while
@@ -308,7 +308,7 @@ python autoplanner/scripts/run_navigation_pipeline.py \
     --start 1 1 --goal 20 20 --planner astar --controller stanley \
     --smooth shortcut --frames 20 --steps-per-frame 40 \
     --obstacle-ahead 15 --obstacle-margin 1 --max-auto-obstacles 1 \
-    --output_dir /tmp/robotnav-dynamic --plot
+    --output_dir autoplanner/results/robotnav-dynamic --plot
 ```
 
 The expected report has `status_code: "success"`,
@@ -329,7 +329,7 @@ model as future occupancy:
     --start 1 1 --goal 20 20 --controller stanley \
     --frames 20 --steps-per-frame 40 --no-auto-obstacles \
     --moving-obstacle 1 3 3 10 1 0 \
-    --output-dir /tmp/robotnav-spacetime
+    --output-dir autoplanner/results/robotnav-spacetime
 ```
 
 For externally driven updates, repeat `--obstacle FRAME X Y` (or use
@@ -342,7 +342,7 @@ python autoplanner/scripts/run_navigation_pipeline.py \
     --map autoplanner/data/maps/simple_50x50.txt \
     --start 1 1 --goal 20 20 --controller stanley --smooth none \
     --frames 20 --steps-per-frame 40 --no-auto-obstacles \
-    --obstacle 1 3 10 --output_dir /tmp/robotnav-external-dynamic --plot
+    --obstacle 1 3 10 --output_dir autoplanner/results/robotnav-external-dynamic --plot
 ```
 
 When invoking the lower-level dynamic C++ CLI directly, use the same
@@ -355,11 +355,11 @@ visualizer on its existing trace artifacts:
     --frames 20 --steps-per-frame 40 --no-auto-obstacles \
     --moving-obstacle 1 3 3 10 1 0 \
     --local-planner dwa --dwa-prediction-time 0.8 \
-    --output-dir /tmp/robotnav-dynamic
+    --output-dir autoplanner/results/robotnav-dynamic
 
 python autoplanner/scripts/visualize_navigation_trace.py \
     --map autoplanner/data/maps/simple_50x50.txt \
-    --trace /tmp/robotnav-dynamic/trace.csv \
-    --metrics /tmp/robotnav-dynamic/metrics.json \
-    --output /tmp/robotnav-dynamic/trace.png
+    --trace autoplanner/results/robotnav-dynamic/trace.csv \
+    --metrics autoplanner/results/robotnav-dynamic/metrics.json \
+    --output autoplanner/results/robotnav-dynamic/trace.png
 ```

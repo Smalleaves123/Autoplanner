@@ -16,6 +16,7 @@
 #include "autoplanner/planners/sampling/rrt_star.h"
 #include "autoplanner/collision/grid_collision_checker.h"
 #include "autoplanner/smoothing/shortcut_smoother.h"
+#include "test_file_utils.h"
 
 using namespace autoplanner;
 
@@ -42,14 +43,15 @@ TEST(GridMapEdge, NegativeResolutionClamped) {
 }
 
 TEST(GridMapEdge, AllObstacleMap) {
-    std::ofstream f("/tmp/all_wall.txt");
+    const auto path = autoplanner_test::artifactPath("all_wall.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 10; ++y) {
         for (int x = 0; x < 10; ++x) f << '1';
         f << '\n';
     }
     f.close();
     GridMap m;
-    ASSERT_TRUE(m.loadFromTxt("/tmp/all_wall.txt"));
+    ASSERT_TRUE(m.loadFromTxt(path.string()));
     EXPECT_EQ(m.width(), 10);
     // Every cell should be occupied
     EXPECT_TRUE(m.isOccupied(5, 5));
@@ -59,14 +61,15 @@ TEST(GridMapEdge, AllObstacleMap) {
 // ── Planner edge cases ─────────────────────────────────────────────────
 
 TEST(PlannerEdge, AStarStartEqualsGoal) {
-    std::ofstream f("/tmp/open_5x5.txt");
+    const auto path = autoplanner_test::artifactPath("open_5x5.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 5; ++y) {
         std::string row(5, '0');
         f << row << '\n';
     }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_5x5.txt");
+    m.loadFromTxt(path.string());
 
     AStarPlanner astar(false);
     auto r = astar.plan(m, {2, 2}, {2, 2});
@@ -84,11 +87,12 @@ TEST(PlannerEdge, AStarEmptyMap) {
 }
 
 TEST(PlannerEdge, AStarNoPathExists) {
-    std::ofstream f("/tmp/blocked.txt");
+    const auto path = autoplanner_test::artifactPath("blocked.txt");
+    std::ofstream f(path);
     f << "00100\n00100\n00100\n00100\n00100\n";  // wall down the middle
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/blocked.txt");
+    m.loadFromTxt(path.string());
     AStarPlanner astar(false);
     auto r = astar.plan(m, {0, 0}, {4, 0});
     EXPECT_FALSE(r.success);
@@ -96,11 +100,12 @@ TEST(PlannerEdge, AStarNoPathExists) {
 }
 
 TEST(PlannerEdge, StartInObstacle) {
-    std::ofstream f("/tmp/tiny.txt");
+    const auto path = autoplanner_test::artifactPath("tiny.txt");
+    std::ofstream f(path);
     f << "10\n01\n";
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/tiny.txt");
+    m.loadFromTxt(path.string());
     AStarPlanner astar(false);
     auto r = astar.plan(m, {0, 0}, {1, 1});
     EXPECT_FALSE(r.success);
@@ -108,11 +113,12 @@ TEST(PlannerEdge, StartInObstacle) {
 }
 
 TEST(PlannerEdge, GoalInObstacle) {
-    std::ofstream f("/tmp/tiny.txt");
+    const auto path = autoplanner_test::artifactPath("tiny_goal.txt");
+    std::ofstream f(path);
     f << "01\n10\n";
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/tiny.txt");
+    m.loadFromTxt(path.string());
     AStarPlanner astar(false);
     auto r = astar.plan(m, {1, 0}, {0, 1});
     EXPECT_FALSE(r.success);
@@ -121,11 +127,12 @@ TEST(PlannerEdge, GoalInObstacle) {
 // ── RRT edge cases ─────────────────────────────────────────────────────
 
 TEST(RRTEdge, NegativeStepSize) {
-    std::ofstream f("/tmp/open_10x10.txt");
+    const auto path = autoplanner_test::artifactPath("open_10x10.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 10; ++y) { std::string row(10, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_10x10.txt");
+    m.loadFromTxt(path.string());
 
     RRTPlanner rrt(-1.0, 100, 0.1, 1.0);  // negative step size
     auto r = rrt.plan(m, {0, 0}, {9, 9});
@@ -134,11 +141,12 @@ TEST(RRTEdge, NegativeStepSize) {
 }
 
 TEST(RRTEdge, AllObstacles) {
-    std::ofstream f("/tmp/all_wall_10.txt");
+    const auto path = autoplanner_test::artifactPath("all_wall_10.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 10; ++y) { std::string row(10, '1'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/all_wall_10.txt");
+    m.loadFromTxt(path.string());
 
     RRTPlanner rrt(1.0, 500, 0.1, 1.0);
     auto r = rrt.plan(m, {0, 0}, {9, 9});
@@ -146,11 +154,12 @@ TEST(RRTEdge, AllObstacles) {
 }
 
 TEST(RRTEdge, ZeroIterations) {
-    std::ofstream f("/tmp/open_5.txt");
+    const auto path = autoplanner_test::artifactPath("open_5.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 5; ++y) { std::string row(5, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_5.txt");
+    m.loadFromTxt(path.string());
 
     RRTPlanner rrt(1.0, 0, 0.1, 1.0);
     auto r = rrt.plan(m, {0, 0}, {4, 4});
@@ -169,11 +178,12 @@ TEST(CostmapEdge, EmptyMap) {
 }
 
 TEST(CostmapEdge, NegativeInflateRadius) {
-    std::ofstream f("/tmp/open_10.txt");
+    const auto path = autoplanner_test::artifactPath("open_10.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 10; ++y) { std::string row(10, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_10.txt");
+    m.loadFromTxt(path.string());
     Costmap2D cm;
     cm.buildFromGridMap(m);
     EXPECT_NO_THROW(cm.inflateObstacles(-1.0));  // should not crash
@@ -218,11 +228,12 @@ TEST(CollisionEdge, EmptyMapChecker) {
 }
 
 TEST(CollisionEdge, SamePointSegment) {
-    std::ofstream f("/tmp/open_5.txt");
+    const auto path = autoplanner_test::artifactPath("open_5_collision.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 5; ++y) { std::string row(5, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_5.txt");
+    m.loadFromTxt(path.string());
     GridCollisionChecker cc(m);
     EXPECT_TRUE(cc.isSegmentValid({2.0, 2.0}, {2.0, 2.0}));
 }
@@ -230,11 +241,12 @@ TEST(CollisionEdge, SamePointSegment) {
 // ── Smoothing edge cases ────────────────────────────────────────────────
 
 TEST(SmoothEdge, EmptyPath) {
-    std::ofstream f("/tmp/open_5.txt");
+    const auto path = autoplanner_test::artifactPath("open_5_smooth.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 5; ++y) { std::string row(5, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_5.txt");
+    m.loadFromTxt(path.string());
     GridCollisionChecker cc(m);
     ShortcutSmoother sm(cc);
     Path2d empty;
@@ -243,11 +255,12 @@ TEST(SmoothEdge, EmptyPath) {
 }
 
 TEST(SmoothEdge, TwoPointPath) {
-    std::ofstream f("/tmp/open_5.txt");
+    const auto path = autoplanner_test::artifactPath("open_5_two_point.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 5; ++y) { std::string row(5, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_5.txt");
+    m.loadFromTxt(path.string());
     GridCollisionChecker cc(m);
     ShortcutSmoother sm(cc);
     Path2d two = {{0.0, 0.0}, {4.0, 4.0}};
@@ -267,11 +280,12 @@ TEST(ResultEdge, DefaultResultIsNotSuccessful) {
 // ── Improved A* edge cases ──────────────────────────────────────────────
 
 TEST(ImprovedAStarEdge, NullCostmapIsSafe) {
-    std::ofstream f("/tmp/open_5.txt");
+    const auto path = autoplanner_test::artifactPath("open_5_improved.txt");
+    std::ofstream f(path);
     for (int y = 0; y < 5; ++y) { std::string row(5, '0'); f << row << '\n'; }
     f.close();
     GridMap m;
-    m.loadFromTxt("/tmp/open_5.txt");
+    m.loadFromTxt(path.string());
 
     ImprovedAStarPlanner p(1.0, 2.0, 0.5, true);  // no costmap set
     auto r = p.plan(m, {0, 0}, {4, 4});

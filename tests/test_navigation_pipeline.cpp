@@ -14,6 +14,7 @@
 #include "robotnav/safety_supervisor.h"
 #include "robotnav/scenario_config.h"
 #include "robotnav/space_time_astar.h"
+#include "test_file_utils.h"
 
 namespace {
 
@@ -38,8 +39,8 @@ TEST(SafetySupervisorTest, RejectsInvalidTrajectoryAndCommand) {
 }
 
 TEST(SpaceTimeAStarTest, AvoidsPredictedMovingObstacle) {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "robotnav_spacetime_corridor.txt";
+    const auto path = robotnav_test::artifactPath(
+        "robotnav_spacetime_corridor.txt");
     {
         std::ofstream output(path);
         ASSERT_TRUE(output.is_open());
@@ -234,8 +235,8 @@ TEST(DynamicNavigationPipelineTest, TracksMovingObstacleUpdates) {
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_FALSE(result.metrics.safe_stop);
 
-    const auto path = std::filesystem::temp_directory_path() /
-                      "robotnav_dynamic_metrics_test.json";
+    const auto path = robotnav_test::artifactPath(
+        "robotnav_dynamic_metrics_test.json");
     ASSERT_TRUE(robotnav::saveDynamicMetricsJson(result, path.string()));
     std::ifstream input(path);
     ASSERT_TRUE(input.is_open());
@@ -344,8 +345,8 @@ TEST(DynamicNavigationPipelineTest, SupportsCurvatureSmoothing) {
 }
 
 TEST(ScenarioConfigTest, LoadsPipelineValues) {
-    const auto path = std::filesystem::temp_directory_path() /
-                      "robotnav_pipeline_test.yaml";
+    const auto path = robotnav_test::artifactPath(
+        "robotnav_pipeline_test.yaml");
     {
         std::ofstream output(path);
         ASSERT_TRUE(output.is_open());
@@ -408,8 +409,8 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
 TEST(NavigationTraceTest, SavesCsv) {
     robotnav::NavigationTrace trace;
     trace.append({0.05, {1.0, 2.0, 0.0, 0.5}, {0.5, 0.1}, 0.2, 0.3});
-    const auto path = std::filesystem::temp_directory_path() /
-                      "robotnav_trace_test.csv";
+    const auto path = robotnav_test::artifactPath(
+        "robotnav_trace_test.csv");
     ASSERT_TRUE(robotnav::saveNavigationTraceCsv(trace, path.string()));
     std::ifstream input(path);
     ASSERT_TRUE(input.is_open());
