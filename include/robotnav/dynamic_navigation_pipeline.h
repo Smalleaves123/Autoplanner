@@ -65,6 +65,7 @@ struct DynamicPipelineMetrics {
     std::size_t external_update_count = 0;
     std::size_t moving_obstacle_update_count = 0;
     std::size_t moving_obstacle_conflict_count = 0;
+    std::size_t dynamic_local_collision_rejections = 0;
     std::size_t dstar_failure_count = 0;
     std::size_t astar_fallback_count = 0;
     std::size_t collision_steps = 0;
@@ -73,6 +74,7 @@ struct DynamicPipelineMetrics {
     double total_astar_replanning_time_ms = 0.0;
     double max_control_jump = 0.0;
     double mean_control_jump = 0.0;
+    double minimum_dynamic_obstacle_clearance = 0.0;
     double goal_distance = 0.0;
     bool goal_reached = false;
     bool safe_stop = false;

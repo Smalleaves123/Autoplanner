@@ -32,6 +32,8 @@ void printHelp() {
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
         << "  --dwa-steering-samples N DWA steering samples\n"
+        << "  --dwa-dynamic-obstacle-margin N  dynamic obstacle margin\n"
+        << "  --dwa-dynamic-collision-samples N dynamic rollout samples\n"
         << "  --velocity N          target trajectory velocity\n"
         << "  --prediction-horizon N  space-time planner horizon frames\n"
         << "  --frames N            dynamic obstacle update frames\n"
@@ -70,6 +72,8 @@ int main(int argc, char** argv) {
     bool has_dwa_prediction_time = false;
     bool has_dwa_velocity_samples = false;
     bool has_dwa_steering_samples = false;
+    bool has_dwa_dynamic_obstacle_margin = false;
+    bool has_dwa_dynamic_collision_samples = false;
     bool has_velocity = false;
     std::string map_override;
     autoplanner::Point2i start_override;
@@ -87,6 +91,8 @@ int main(int argc, char** argv) {
     double dwa_prediction_time_override = 0.0;
     int dwa_velocity_samples_override = 0;
     int dwa_steering_samples_override = 0;
+    double dwa_dynamic_obstacle_margin_override = 0.0;
+    int dwa_dynamic_collision_samples_override = 0;
     double velocity_override = 0.0;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
     std::vector<robotnav::MovingObstacle> moving_obstacles;
@@ -146,6 +152,12 @@ int main(int argc, char** argv) {
         } else if (arg == "--dwa-steering-samples" && i + 1 < argc) {
             dwa_steering_samples_override = std::stoi(argv[++i]);
             has_dwa_steering_samples = true;
+        } else if (arg == "--dwa-dynamic-obstacle-margin" && i + 1 < argc) {
+            dwa_dynamic_obstacle_margin_override = std::stod(argv[++i]);
+            has_dwa_dynamic_obstacle_margin = true;
+        } else if (arg == "--dwa-dynamic-collision-samples" && i + 1 < argc) {
+            dwa_dynamic_collision_samples_override = std::stoi(argv[++i]);
+            has_dwa_dynamic_collision_samples = true;
         } else if (arg == "--velocity" && i + 1 < argc) {
             velocity_override = std::stod(argv[++i]);
             has_velocity = true;
@@ -236,6 +248,12 @@ int main(int argc, char** argv) {
     if (has_dwa_steering_samples)
         scenario.pipeline.dwa_options.steering_samples =
             dwa_steering_samples_override;
+    if (has_dwa_dynamic_obstacle_margin)
+        scenario.pipeline.dwa_options.dynamic_obstacle_margin =
+            dwa_dynamic_obstacle_margin_override;
+    if (has_dwa_dynamic_collision_samples)
+        scenario.pipeline.dwa_options.dynamic_collision_samples =
+            dwa_dynamic_collision_samples_override;
     if (has_velocity) {
         scenario.pipeline.trajectory_options.target_velocity = velocity_override;
     }

@@ -39,3 +39,8 @@ safety:
   goal_tolerance: 0.75
   max_cross_track_error: 5.0
   enforce_collision: true
+local_planner:
+  name: none
+  dwa:
+    dynamic_obstacle_margin: 0.0
+    dynamic_collision_samples: 3

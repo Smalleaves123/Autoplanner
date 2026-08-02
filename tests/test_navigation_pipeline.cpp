@@ -7,7 +7,10 @@
 
 #include <gtest/gtest.h>
 
+#include "autoplanner/collision/grid_collision_checker.h"
 #include "autoplanner/core/grid_map.h"
+#include "autompc/core/trajectory.h"
+#include "robotnav/dwa_local_planner.h"
 #include "robotnav/dynamic_navigation_pipeline.h"
 #include "robotnav/navigation_pipeline.h"
 #include "robotnav/navigation_trace.h"
@@ -26,6 +29,92 @@ autoplanner::GridMap loadSimpleMap() {
 }
 
 }  // namespace
+
+TEST(DynamicObstaclePredictionTest, ComputesContinuousClearance) {
+    const robotnav::MovingObstacle obstacle{0, 10, {2, 2}, 1, 0};
+    const std::vector<robotnav::MovingObstacle> obstacles = {obstacle};
+
+    autoplanner::Point2d predicted;
+    ASSERT_TRUE(robotnav::predictMovingObstaclePosition(
+        obstacle, 0.5, predicted));
+    EXPECT_DOUBLE_EQ(predicted.x, 2.5);
+    EXPECT_DOUBLE_EQ(predicted.y, 2.0);
+    EXPECT_DOUBLE_EQ(
+        robotnav::predictedObstacleClearance(obstacles, {2.5, 2.5}, 0.5),
+        0.0);
+    EXPECT_TRUE(robotnav::isPredictedCollision(
+        obstacles, {2.5, 2.5}, 0.5));
+    EXPECT_FALSE(robotnav::isPredictedCollision(
+        obstacles, {1.5, 2.5}, 0.5));
+    EXPECT_TRUE(robotnav::isPredictedCollision(
+        obstacles, {2.0, 2.5}, 0.5, 0.5));
+}
+
+TEST(DynamicObstaclePredictionTest, ExpandsFootprintWithUncertainty) {
+    const robotnav::MovingObstacle obstacle{
+        0, 10, {2, 2}, 0, 0, 0.25, 0.1};
+    const std::vector<robotnav::MovingObstacle> obstacles = {obstacle};
+
+    EXPECT_NEAR(
+        robotnav::predictedObstacleClearance(obstacles, {1.25, 2.5}, 5.0),
+        0.75 - 0.25 - 0.5, 1e-9);
+    EXPECT_TRUE(robotnav::isPredictedCollision(
+        obstacles, {1.25, 2.5}, 5.0));
+}
+
+TEST(DynamicObstaclePredictionTest, RejectsInvalidPredictionConfiguration) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.frames = 2;
+    config.steps_per_frame = 2;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({3, 1, {3, 3}, 0, 0});
+
+    const auto result = robotnav::DynamicNavigationPipeline{}.run(
+        map, {1, 1}, {5, 5}, config);
+    EXPECT_EQ(result.metrics.status,
+              robotnav::StatusCode::InvalidConfiguration);
+}
+
+TEST(DwaLocalPlannerTest, RejectsCommandsEnteringPredictedObstacle) {
+    const auto path = robotnav_test::artifactPath("dwa_dynamic_map.txt");
+    {
+        std::ofstream output(path);
+        ASSERT_TRUE(output.is_open());
+        for (int row = 0; row < 6; ++row) {
+            output << std::string(20, '0') << '\n';
+        }
+    }
+
+    autoplanner::GridMap map;
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
+    autoplanner::GridCollisionChecker checker(map);
+    autompc::SimulationOptions simulation;
+    simulation.dt = 0.1;
+    simulation.max_acceleration = 10.0;
+    simulation.max_deceleration = 10.0;
+    simulation.max_steering_rate = 10.0;
+    robotnav::DwaOptions options;
+    options.prediction_time = 2.0;
+    options.velocity_samples = 5;
+    options.steering_samples = 3;
+    options.dynamic_collision_samples = 5;
+    robotnav::DwaLocalPlanner planner(checker, simulation, options);
+
+    const auto trajectory = autompc::makeStraightLine(1.0, 2.5, 8.0, 2.5,
+                                                       1.0, 30);
+    const std::vector<robotnav::MovingObstacle> obstacles = {
+        {0, 10, {3, 2}, 0, 0}};
+    const robotnav::DwaDynamicContext context{
+        &obstacles, 0, 1.0, 0.0};
+    const auto decision = planner.computeCommand(
+        {1.0, 2.5, 0.0, 1.0}, 0.0, trajectory, {1.0, 0.0}, context);
+
+    EXPECT_TRUE(decision.feasible);
+    EXPECT_GT(decision.dynamic_collision_rejections, 0u);
+    EXPECT_TRUE(std::isfinite(decision.minimum_dynamic_clearance));
+}
 
 TEST(SafetySupervisorTest, RejectsInvalidTrajectoryAndCommand) {
     const auto map = loadSimpleMap();
@@ -60,12 +149,12 @@ TEST(SpaceTimeAStarTest, AvoidsPredictedMovingObstacle) {
     EXPECT_FALSE(robotnav::isPredictedOccupied(obstacles, {2, 2}, 4));
 
     const robotnav::SpaceTimeAStarPlanner short_horizon({
-        false, true, 2});
+        false, true, 2, 0.0});
     EXPECT_FALSE(short_horizon.plan(
         map, {1, 2}, {3, 2}, obstacles, 0).success);
 
     const robotnav::SpaceTimeAStarPlanner long_horizon({
-        false, true, 6});
+        false, true, 6, 0.0});
     const auto result = long_horizon.plan(
         map, {1, 2}, {3, 2}, obstacles, 0);
     EXPECT_EQ(result.planner_name, "space_time_astar");
@@ -376,6 +465,8 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "    prediction_time: 0.7\n"
                << "    velocity_samples: 3\n"
                << "    steering_samples: 5\n"
+               << "    dynamic_obstacle_margin: 0.2\n"
+               << "    dynamic_collision_samples: 5\n"
                << "pipeline:\n"
                << "  max_steps: 123\n"
                << "safety:\n"
@@ -399,6 +490,9 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(scenario.pipeline.dwa_options.prediction_time, 0.7);
     EXPECT_EQ(scenario.pipeline.dwa_options.velocity_samples, 3);
     EXPECT_EQ(scenario.pipeline.dwa_options.steering_samples, 5);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.dwa_options.dynamic_obstacle_margin, 0.2);
+    EXPECT_EQ(scenario.pipeline.dwa_options.dynamic_collision_samples, 5);
     EXPECT_EQ(scenario.pipeline.max_steps, 123u);
     EXPECT_FALSE(scenario.pipeline.safety_options.enforce_collision);
 

@@ -99,6 +99,21 @@ may appear or disappear after the initial plan.
 - Useful for online robot navigation.
 - Heavier to implement than A\*, but much faster for replanning.
 
+### Prediction-aware local safety
+
+The dynamic navigation pipeline combines a global replanner with a local
+rollout check. Moving obstacles are represented by a time-indexed constant
+velocity prediction. Each DWA candidate is simulated at intermediate times and
+rejected when its footprint intersects the predicted occupied cell or its
+configured safety margin. The same prediction is checked again after simulator
+integration, so a successful global replan cannot hide a locally unsafe
+control command.
+
+The resulting metrics expose both `dynamic_local_collision_rejections` and
+`minimum_dynamic_obstacle_clearance`. This separates planner success from
+dynamic execution safety and provides a baseline for future TEB, MPPI, and
+probabilistic prediction modules.
+
 ---
 
 ## Sampling-Based Algorithms

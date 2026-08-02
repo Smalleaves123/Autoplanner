@@ -40,6 +40,46 @@ void addUnique(std::vector<double>& values, double value) {
     }
 }
 
+bool dynamicSegmentValid(const autompc::State& start,
+                         const autompc::State& end,
+                         double start_seconds,
+                         double end_seconds,
+                         const DwaDynamicContext& context,
+                         const DwaOptions& options,
+                         double& minimum_clearance) {
+    if (context.obstacles == nullptr || context.obstacles->empty()) {
+        return true;
+    }
+    if (!std::isfinite(context.frame_period_seconds) ||
+        context.frame_period_seconds <= 0.0) {
+        return false;
+    }
+
+    const int samples = std::max(2, options.dynamic_collision_samples);
+    for (int index = 0; index <= samples; ++index) {
+        const double ratio = static_cast<double>(index) /
+                             static_cast<double>(samples);
+        const double seconds = start_seconds +
+                                ratio * (end_seconds - start_seconds);
+        const double frame = static_cast<double>(context.current_frame) +
+                             seconds / context.frame_period_seconds;
+        const autoplanner::Point2d position{
+            start.x + ratio * (end.x - start.x),
+            start.y + ratio * (end.y - start.y)};
+        const double clearance = predictedObstacleClearance(
+            *context.obstacles, position, frame);
+        if (std::isfinite(clearance)) {
+            minimum_clearance = std::min(minimum_clearance, clearance);
+        }
+        if (isPredictedCollision(
+                *context.obstacles, position, frame,
+                context.collision_margin)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 autompc::TrajectoryPoint lookaheadReference(
     const autompc::Trajectory& trajectory,
     const autompc::State& state,
@@ -148,9 +188,11 @@ DwaDecision DwaLocalPlanner::computeCommand(
     const autompc::State& state,
     double current_steering,
     const autompc::Trajectory& trajectory,
-    const autompc::Control& nominal_command) const {
+    const autompc::Control& nominal_command,
+    const DwaDynamicContext& dynamic_context) const {
     if (trajectory.empty() || simulation_options_.dt <= 0.0 ||
-        options_.prediction_time <= 0.0) {
+        options_.prediction_time <= 0.0 ||
+        options_.dynamic_collision_samples <= 0) {
         return {};
     }
 
@@ -183,6 +225,8 @@ DwaDecision DwaLocalPlanner::computeCommand(
                std::ceil(options_.prediction_time / simulation_options_.dt)));
     DwaDecision best;
     best.score = std::numeric_limits<double>::max();
+    best.minimum_dynamic_clearance =
+        std::numeric_limits<double>::infinity();
 
     for (const double velocity : velocity_samples) {
         for (const double steering_command : steering_samples) {
@@ -190,6 +234,9 @@ DwaDecision DwaLocalPlanner::computeCommand(
             autompc::State predicted = state;
             double predicted_steering = current_steering;
             bool collision_free = true;
+            double candidate_clearance =
+                std::numeric_limits<double>::infinity();
+            double elapsed_seconds = 0.0;
             for (int step = 0; step < rollout_steps; ++step) {
                 const auto previous = predicted;
                 predicted = rolloutStep(
@@ -201,8 +248,21 @@ DwaDecision DwaLocalPlanner::computeCommand(
                     collision_free = false;
                     break;
                 }
+                const double next_elapsed_seconds = elapsed_seconds +
+                    simulation_options_.dt;
+                if (!dynamicSegmentValid(
+                        previous, predicted, elapsed_seconds,
+                        next_elapsed_seconds, dynamic_context, options_,
+                        candidate_clearance)) {
+                    collision_free = false;
+                    ++best.dynamic_collision_rejections;
+                    break;
+                }
+                elapsed_seconds = next_elapsed_seconds;
             }
             if (!collision_free) continue;
+            best.minimum_dynamic_clearance = std::min(
+                best.minimum_dynamic_clearance, candidate_clearance);
             const double score = scoreEndpoint(
                 predicted, trajectory, state, candidate, nominal_command,
                 simulation_options_, options_);

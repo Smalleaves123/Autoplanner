@@ -53,8 +53,12 @@ bool canMoveDiagonal(const autoplanner::GridMap& map,
 
 bool predictedFree(const std::vector<MovingObstacle>& obstacles,
                    const autoplanner::Point2i& cell,
-                   std::size_t absolute_frame) {
-    return !isPredictedOccupied(obstacles, cell, absolute_frame);
+                   std::size_t absolute_frame,
+                   double obstacle_margin) {
+    return !isPredictedCollision(
+        obstacles,
+        {static_cast<double>(cell.x), static_cast<double>(cell.y)},
+        static_cast<double>(absolute_frame), obstacle_margin);
 }
 
 autoplanner::Path2d reconstructPath(
@@ -102,12 +106,21 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
     result.planner_name = "space_time_astar";
     const auto time_begin = std::chrono::steady_clock::now();
 
-    if (map.isEmpty() || options_.max_time_steps == 0) {
+    if (map.isEmpty() || options_.max_time_steps == 0 ||
+        !std::isfinite(options_.obstacle_margin) ||
+        options_.obstacle_margin < 0.0) {
         result.message = "Space-time planner is not initialized.";
         return result;
     }
+    for (const auto& obstacle : moving_obstacles) {
+        if (!isValidMovingObstacle(obstacle)) {
+            result.message = "Moving obstacle prediction is invalid.";
+            return result;
+        }
+    }
     if (!map.isFree(start.x, start.y) ||
-        !predictedFree(moving_obstacles, start, start_frame)) {
+        !predictedFree(moving_obstacles, start, start_frame,
+                       options_.obstacle_margin)) {
         result.message = "Start is invalid or occupied.";
         return result;
     }
@@ -173,7 +186,8 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
             }
             const autoplanner::Point2i next_cell{nx, ny};
             if (!predictedFree(
-                    moving_obstacles, next_cell, start_frame + next_time)) {
+                    moving_obstacles, next_cell, start_frame + next_time,
+                    options_.obstacle_margin)) {
                 continue;
             }
 

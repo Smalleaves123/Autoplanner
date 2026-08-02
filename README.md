@@ -16,11 +16,11 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
 # Path planning
-./build/autoplanner/apps/autoplanner_cli --planner astar \
+./build/apps/autoplanner_cli --planner astar \
     --map autoplanner/data/maps/maze_100x100.txt --start 1 1 --goal 98 98
 
 # Trajectory tracking
-./build/autompc/examples/circle_tracking
+./build/examples/circle_tracking
 ```
 
 To build/install the Python package:
@@ -275,6 +275,24 @@ candidate:
     --local-planner dwa --dwa-prediction-time 0.8 \
     --output-dir autoplanner/results/robotnav-dwa
 ```
+
+In the dynamic pipeline, the same DWA rollout also checks predicted moving
+obstacle occupancy at intermediate times. Its safety margin and temporal
+sampling can be configured from YAML or overridden at the CLI:
+
+```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --planner astar --controller stanley --local-planner dwa \
+    --dwa-dynamic-obstacle-margin 0.25 \
+    --dwa-dynamic-collision-samples 5 \
+    --moving-obstacle 1 5 3 10 1 0 \
+    --output-dir autoplanner/results/robotnav-dynamic-dwa
+```
+
+Dynamic metrics include the number of rejected local candidates and the
+minimum predicted obstacle clearance, so replanning success is not the only
+signal used to evaluate a run.
 
 The existing Python orchestrator can select this unified C++ engine while
 keeping its legacy planner/tracker mode available:

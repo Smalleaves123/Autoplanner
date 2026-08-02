@@ -201,6 +201,12 @@ bool sameCell(const autoplanner::Point2i& left,
     return left.x == right.x && left.y == right.y;
 }
 
+bool isActiveMapState(const autoplanner::GridMap& map,
+                      const autompc::State& state) {
+    return map.isFree(static_cast<int>(std::floor(state.x)),
+                      static_cast<int>(std::floor(state.y)));
+}
+
 bool containsCell(const std::vector<autoplanner::Point2i>& cells,
                   const autoplanner::Point2i& cell) {
     return std::any_of(cells.begin(), cells.end(),
@@ -322,9 +328,16 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     };
 
     if (map.isEmpty() || config.frames == 0 ||
-        config.steps_per_frame == 0 || config.pipeline.max_steps == 0) {
+        config.steps_per_frame == 0 || config.pipeline.max_steps == 0 ||
+        config.pipeline.simulation_options.dt <= 0.0) {
         return fail(StatusCode::InvalidConfiguration,
                     "dynamic pipeline configuration is invalid");
+    }
+    for (const auto& obstacle : config.moving_obstacles) {
+        if (!isValidMovingObstacle(obstacle)) {
+            return fail(StatusCode::InvalidConfiguration,
+                        "moving obstacle prediction is invalid");
+        }
     }
     if (config.pipeline.local_planner != "none" &&
         config.pipeline.local_planner != "dwa") {
@@ -335,7 +348,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     if (config.pipeline.local_planner == "dwa" &&
         (config.pipeline.dwa_options.prediction_time <= 0.0 ||
          config.pipeline.dwa_options.velocity_samples <= 0 ||
-         config.pipeline.dwa_options.steering_samples <= 0)) {
+         config.pipeline.dwa_options.steering_samples <= 0 ||
+         config.pipeline.dwa_options.dynamic_collision_samples <= 0 ||
+         !std::isfinite(config.pipeline.dwa_options.dynamic_obstacle_margin) ||
+         config.pipeline.dwa_options.dynamic_obstacle_margin < 0.0)) {
         return fail(StatusCode::InvalidConfiguration,
                     "invalid DWA local planner configuration");
     }
@@ -371,7 +387,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     SpaceTimeAStarPlanner space_time_astar({
         config.pipeline.planner_options.allow_diagonal,
         true,
-        config.prediction_horizon_frames});
+        config.prediction_horizon_frames,
+        geometry.circumscribed_radius +
+            config.pipeline.dwa_options.dynamic_obstacle_margin});
     auto initial = use_space_time_astar
         ? space_time_astar.plan(geometry.planning_map, start, goal,
                                 config.moving_obstacles, 0)
@@ -684,6 +702,15 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         }
 
         ++result.metrics.frames_run;
+        const double frame_period_seconds =
+            static_cast<double>(config.steps_per_frame) *
+            config.pipeline.simulation_options.dt;
+        const DwaDynamicContext dynamic_context{
+            &config.moving_obstacles,
+            frame,
+            frame_period_seconds,
+            geometry.circumscribed_radius +
+                config.pipeline.dwa_options.dynamic_obstacle_margin};
         for (std::size_t step = 0;
              step < config.steps_per_frame &&
              result.metrics.steps < config.pipeline.max_steps;
@@ -705,7 +732,21 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             if (dwa) {
                 const auto decision = dwa->computeCommand(
-                    state, simulator.steering(), trajectory, command);
+                    state, simulator.steering(), trajectory, command,
+                    dynamic_context);
+                result.metrics.dynamic_local_collision_rejections +=
+                    decision.dynamic_collision_rejections;
+                if (std::isfinite(decision.minimum_dynamic_clearance)) {
+                    if (result.metrics.minimum_dynamic_obstacle_clearance == 0.0) {
+                        result.metrics.minimum_dynamic_obstacle_clearance =
+                            decision.minimum_dynamic_clearance;
+                    } else {
+                        result.metrics.minimum_dynamic_obstacle_clearance =
+                            std::min(
+                                result.metrics.minimum_dynamic_obstacle_clearance,
+                                decision.minimum_dynamic_clearance);
+                    }
+                }
                 if (!decision.feasible) {
                     result.metrics.safe_stop = true;
                     return fail(StatusCode::ControllerInfeasible,
@@ -726,14 +767,38 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             state = simulator.step(command);
             const auto state_check = supervisor.validateState(state);
+            const double dynamic_frame =
+                static_cast<double>(frame) +
+                static_cast<double>(step + 1) /
+                    static_cast<double>(config.steps_per_frame);
+            const double dynamic_clearance = predictedObstacleClearance(
+                config.moving_obstacles, {state.x, state.y}, dynamic_frame);
+            if (std::isfinite(dynamic_clearance) &&
+                (result.metrics.minimum_dynamic_obstacle_clearance == 0.0 ||
+                 dynamic_clearance <
+                     result.metrics.minimum_dynamic_obstacle_clearance)) {
+                result.metrics.minimum_dynamic_obstacle_clearance =
+                    dynamic_clearance;
+            }
+            const bool active_map_state_safe = isActiveMapState(
+                geometry.planning_map, state);
+            const bool predicted_state_safe = !isPredictedCollision(
+                config.moving_obstacles, {state.x, state.y}, dynamic_frame,
+                geometry.circumscribed_radius +
+                    config.pipeline.dwa_options.dynamic_obstacle_margin);
             appendSample(frame, step, command,
                          replanned && step == 0, obstacle,
                          step == 0 ? dstar_ms : 0.0,
                          step == 0 ? astar_ms : 0.0, false);
-            if (!state_check.safe) {
+            if (!state_check.safe || !active_map_state_safe ||
+                !predicted_state_safe) {
                 ++result.metrics.collision_steps;
                 result.metrics.safe_stop = true;
-                return fail(state_check.status, state_check.message);
+                return fail(
+                    StatusCode::Collision,
+                    state_check.safe
+                        ? "dynamic obstacle collision detected"
+                        : state_check.message);
             }
             if (supervisor.goalReached(state, trajectory)) {
                 result.metrics.goal_reached = true;
@@ -826,6 +891,8 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << result.metrics.moving_obstacle_update_count << ",\n"
            << "  \"moving_obstacle_conflict_count\": "
            << result.metrics.moving_obstacle_conflict_count << ",\n"
+           << "  \"dynamic_local_collision_rejections\": "
+           << result.metrics.dynamic_local_collision_rejections << ",\n"
            << "  \"dstar_failure_count\": "
            << result.metrics.dstar_failure_count << ",\n"
            << "  \"astar_fallback_count\": "
@@ -846,6 +913,8 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     writeJsonNumber(output, result.metrics.max_control_jump);
     output << ",\n  \"mean_control_jump\": ";
     writeJsonNumber(output, result.metrics.mean_control_jump);
+    output << ",\n  \"minimum_dynamic_obstacle_clearance\": ";
+    writeJsonNumber(output, result.metrics.minimum_dynamic_obstacle_clearance);
     output << ",\n  \"goal_distance\": ";
     writeJsonNumber(output, result.metrics.goal_distance);
     output << "\n}\n";

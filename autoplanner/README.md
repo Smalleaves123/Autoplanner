@@ -10,7 +10,7 @@ planners (RRT, RRT\*), all behind a single `PlannerBase` interface.
 
 **Key features:**
 
-- **10 planning algorithms** — Dijkstra, A\*, Weighted A\*, Improved A\*,
+- **11 planning algorithms** — Dijkstra, A\*, Weighted A\*, Improved A\*,
   JPS, D\* Lite, RRT, RRT\*, Informed RRT\*, Bi-RRT, Hybrid A\*
 - **Unified interface** — every planner shares `plan(map, start, goal) → result`
 - **Costmap pipeline** — obstacle inflation, distance transform, risk-aware costs

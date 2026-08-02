@@ -28,6 +28,8 @@ void printHelp() {
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
         << "  --dwa-steering-samples N DWA steering samples\n"
+        << "  --dwa-dynamic-obstacle-margin N  dynamic obstacle margin\n"
+        << "  --dwa-dynamic-collision-samples N dynamic rollout samples\n"
         << "  --start X Y           start cell\n"
         << "  --goal X Y            goal cell\n"
         << "  --max-steps N         controller execution limit\n"
@@ -57,6 +59,8 @@ int main(int argc, char** argv) {
     bool has_dwa_prediction_time = false;
     bool has_dwa_velocity_samples = false;
     bool has_dwa_steering_samples = false;
+    bool has_dwa_dynamic_obstacle_margin = false;
+    bool has_dwa_dynamic_collision_samples = false;
     bool has_start = false;
     bool has_goal = false;
     bool has_max_steps = false;
@@ -116,6 +120,14 @@ int main(int argc, char** argv) {
             scenario.pipeline.dwa_options.steering_samples =
                 std::stoi(argv[++i]);
             has_dwa_steering_samples = true;
+        } else if (arg == "--dwa-dynamic-obstacle-margin" && i + 1 < argc) {
+            scenario.pipeline.dwa_options.dynamic_obstacle_margin =
+                std::stod(argv[++i]);
+            has_dwa_dynamic_obstacle_margin = true;
+        } else if (arg == "--dwa-dynamic-collision-samples" && i + 1 < argc) {
+            scenario.pipeline.dwa_options.dynamic_collision_samples =
+                std::stoi(argv[++i]);
+            has_dwa_dynamic_collision_samples = true;
         } else if (arg == "--start" && i + 2 < argc) {
             scenario.start = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             has_start = true;
@@ -188,6 +200,12 @@ int main(int argc, char** argv) {
         if (has_dwa_steering_samples)
             scenario.pipeline.dwa_options.steering_samples =
                 pipeline_override.dwa_options.steering_samples;
+        if (has_dwa_dynamic_obstacle_margin)
+            scenario.pipeline.dwa_options.dynamic_obstacle_margin =
+                pipeline_override.dwa_options.dynamic_obstacle_margin;
+        if (has_dwa_dynamic_collision_samples)
+            scenario.pipeline.dwa_options.dynamic_collision_samples =
+                pipeline_override.dwa_options.dynamic_collision_samples;
         if (has_max_steps) scenario.pipeline.max_steps =
             pipeline_override.max_steps;
         if (has_velocity) scenario.pipeline.trajectory_options.target_velocity =

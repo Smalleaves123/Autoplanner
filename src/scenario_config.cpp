@@ -112,6 +112,12 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.dwa_options.command_weight = loader.getDouble(
         "local_planner.dwa.command_weight",
         pipeline.dwa_options.command_weight);
+    pipeline.dwa_options.dynamic_obstacle_margin = loader.getDouble(
+        "local_planner.dwa.dynamic_obstacle_margin",
+        pipeline.dwa_options.dynamic_obstacle_margin);
+    pipeline.dwa_options.dynamic_collision_samples = loader.getInt(
+        "local_planner.dwa.dynamic_collision_samples",
+        pipeline.dwa_options.dynamic_collision_samples);
 
     pipeline.safety_options.goal_tolerance = loader.getDouble(
         "safety.goal_tolerance", pipeline.safety_options.goal_tolerance);

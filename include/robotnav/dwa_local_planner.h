@@ -1,9 +1,13 @@
 #pragma once
 
+#include <cstddef>
+#include <vector>
+
 #include "autompc/core/trajectory.h"
 #include "autompc/core/types.h"
 #include "autompc/simulation/kinematic_bicycle.h"
 #include "autoplanner/collision/collision_checker.h"
+#include "robotnav/dynamic_obstacle_prediction.h"
 
 namespace robotnav {
 
@@ -15,12 +19,23 @@ struct DwaOptions {
     double heading_weight = 0.25;
     double speed_weight = 0.15;
     double command_weight = 0.35;
+    double dynamic_obstacle_margin = 0.0;
+    int dynamic_collision_samples = 3;
+};
+
+struct DwaDynamicContext {
+    const std::vector<MovingObstacle>* obstacles = nullptr;
+    std::size_t current_frame = 0;
+    double frame_period_seconds = 1.0;
+    double collision_margin = 0.0;
 };
 
 struct DwaDecision {
     bool feasible = false;
     autompc::Control command;
     double score = 0.0;
+    std::size_t dynamic_collision_rejections = 0;
+    double minimum_dynamic_clearance = 0.0;
 };
 
 class DwaLocalPlanner {
@@ -32,7 +47,8 @@ public:
     DwaDecision computeCommand(const autompc::State& state,
                                double current_steering,
                                const autompc::Trajectory& trajectory,
-                               const autompc::Control& nominal_command) const;
+                               const autompc::Control& nominal_command,
+                               const DwaDynamicContext& dynamic_context = {}) const;
 
 private:
     const autoplanner::CollisionChecker& collision_checker_;

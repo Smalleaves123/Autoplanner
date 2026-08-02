@@ -125,7 +125,10 @@ PipelineResult NavigationPipeline::run(
     if (config.local_planner == "dwa" &&
         (config.dwa_options.prediction_time <= 0.0 ||
          config.dwa_options.velocity_samples <= 0 ||
-         config.dwa_options.steering_samples <= 0)) {
+         config.dwa_options.steering_samples <= 0 ||
+         config.dwa_options.dynamic_collision_samples <= 0 ||
+         !std::isfinite(config.dwa_options.dynamic_obstacle_margin) ||
+         config.dwa_options.dynamic_obstacle_margin < 0.0)) {
         return fail(StatusCode::InvalidConfiguration,
                     "invalid DWA local planner configuration");
     }
