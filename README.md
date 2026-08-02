@@ -276,6 +276,41 @@ candidate:
     --output-dir autoplanner/results/robotnav-dwa
 ```
 
+For sampling-based model-predictive control, select the MPPI local planner.
+It samples Gaussian control sequences around the controller command, rolls
+each sequence through the kinematic bicycle model, scores path/heading/speed
+tracking and control smoothness, and aggregates the first command with
+temperature-weighted costs. The zero-noise nominal sequence is always kept as
+a deterministic baseline; `--mppi-*` options expose the prediction horizon,
+rollout count, temperature, and exploration noise:
+
+```bash
+./build/apps/navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 --local-planner mppi \
+    --mppi-prediction-time 0.8 --mppi-horizon 12 \
+    --mppi-rollouts 64 --mppi-temperature 0.5 \
+    --mppi-velocity-noise 0.35 --mppi-steering-noise 0.12 \
+    --output-dir autoplanner/results/robotnav-mppi
+```
+
+In the dynamic pipeline, MPPI additionally rejects static and predicted
+dynamic collisions during every rollout and adds a configurable dynamic
+clearance cost (`local_planner.mppi.dynamic_clearance`, default `0.5`) before
+the hard collision threshold. This makes the optimizer react to moving
+obstacles before they occupy the nominal path:
+
+```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --start 1 1 --goal 20 20 --controller stanley \
+    --local-planner mppi --mppi-prediction-time 0.8 \
+    --mppi-horizon 12 --mppi-rollouts 64 \
+    --frames 20 --steps-per-frame 40 --no-auto-obstacles \
+    --moving-obstacle 1 20 3 10 1 0 \
+    --output-dir autoplanner/results/robotnav-dynamic-mppi
+```
+
 In the dynamic pipeline, the same DWA rollout also checks predicted moving
 obstacle occupancy at intermediate times. Its safety margin and temporal
 sampling can be configured from YAML or overridden at the CLI:

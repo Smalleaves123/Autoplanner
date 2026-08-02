@@ -119,6 +119,55 @@ bool loadScenarioConfig(const std::string& file_path,
         "local_planner.dwa.dynamic_collision_samples",
         pipeline.dwa_options.dynamic_collision_samples);
 
+    pipeline.mppi_options.prediction_time = loader.getDouble(
+        "local_planner.mppi.prediction_time",
+        pipeline.mppi_options.prediction_time);
+    pipeline.mppi_options.horizon = loader.getInt(
+        "local_planner.mppi.horizon", pipeline.mppi_options.horizon);
+    pipeline.mppi_options.rollouts = loader.getInt(
+        "local_planner.mppi.rollouts", pipeline.mppi_options.rollouts);
+    pipeline.mppi_options.temperature = loader.getDouble(
+        "local_planner.mppi.temperature", pipeline.mppi_options.temperature);
+    pipeline.mppi_options.velocity_noise = loader.getDouble(
+        "local_planner.mppi.velocity_noise",
+        pipeline.mppi_options.velocity_noise);
+    pipeline.mppi_options.steering_noise = loader.getDouble(
+        "local_planner.mppi.steering_noise",
+        pipeline.mppi_options.steering_noise);
+    pipeline.mppi_options.trajectory_weight = loader.getDouble(
+        "local_planner.mppi.trajectory_weight",
+        pipeline.mppi_options.trajectory_weight);
+    pipeline.mppi_options.heading_weight = loader.getDouble(
+        "local_planner.mppi.heading_weight",
+        pipeline.mppi_options.heading_weight);
+    pipeline.mppi_options.velocity_weight = loader.getDouble(
+        "local_planner.mppi.velocity_weight",
+        pipeline.mppi_options.velocity_weight);
+    pipeline.mppi_options.control_weight = loader.getDouble(
+        "local_planner.mppi.control_weight",
+        pipeline.mppi_options.control_weight);
+    pipeline.mppi_options.control_rate_weight = loader.getDouble(
+        "local_planner.mppi.control_rate_weight",
+        pipeline.mppi_options.control_rate_weight);
+    pipeline.mppi_options.dynamic_obstacle_weight = loader.getDouble(
+        "local_planner.mppi.dynamic_obstacle_weight",
+        pipeline.mppi_options.dynamic_obstacle_weight);
+    pipeline.mppi_options.dynamic_clearance = loader.getDouble(
+        "local_planner.mppi.dynamic_clearance",
+        pipeline.mppi_options.dynamic_clearance);
+    pipeline.mppi_options.dynamic_obstacle_margin = loader.getDouble(
+        "local_planner.mppi.dynamic_obstacle_margin",
+        pipeline.mppi_options.dynamic_obstacle_margin);
+    pipeline.mppi_options.dynamic_collision_samples = loader.getInt(
+        "local_planner.mppi.dynamic_collision_samples",
+        pipeline.mppi_options.dynamic_collision_samples);
+    const int mppi_seed = loader.getInt(
+        "local_planner.mppi.random_seed",
+        static_cast<int>(pipeline.mppi_options.random_seed));
+    if (mppi_seed >= 0) {
+        pipeline.mppi_options.random_seed = static_cast<unsigned int>(mppi_seed);
+    }
+
     pipeline.safety_options.goal_tolerance = loader.getDouble(
         "safety.goal_tolerance", pipeline.safety_options.goal_tolerance);
     pipeline.safety_options.max_cross_track_error = loader.getDouble(

@@ -24,12 +24,18 @@ void printHelp() {
         << "  --smooth NAME         none|shortcut|curvature\n"
         << "  --smooth-iterations N smoothing iterations\n"
         << "  --smooth-max-curvature N curvature smoother limit\n"
-        << "  --local-planner NAME  none|dwa\n"
+        << "  --local-planner NAME  none|dwa|mppi\n"
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
         << "  --dwa-steering-samples N DWA steering samples\n"
         << "  --dwa-dynamic-obstacle-margin N  dynamic obstacle margin\n"
         << "  --dwa-dynamic-collision-samples N dynamic rollout samples\n"
+        << "  --mppi-prediction-time N MPPI rollout horizon seconds\n"
+        << "  --mppi-horizon N       MPPI control horizon\n"
+        << "  --mppi-rollouts N      MPPI sampled rollouts\n"
+        << "  --mppi-temperature N   MPPI soft-min temperature\n"
+        << "  --mppi-velocity-noise N MPPI velocity noise\n"
+        << "  --mppi-steering-noise N MPPI steering noise\n"
         << "  --start X Y           start cell\n"
         << "  --goal X Y            goal cell\n"
         << "  --max-steps N         controller execution limit\n"
@@ -61,6 +67,12 @@ int main(int argc, char** argv) {
     bool has_dwa_steering_samples = false;
     bool has_dwa_dynamic_obstacle_margin = false;
     bool has_dwa_dynamic_collision_samples = false;
+    bool has_mppi_prediction_time = false;
+    bool has_mppi_horizon = false;
+    bool has_mppi_rollouts = false;
+    bool has_mppi_temperature = false;
+    bool has_mppi_velocity_noise = false;
+    bool has_mppi_steering_noise = false;
     bool has_start = false;
     bool has_goal = false;
     bool has_max_steps = false;
@@ -128,6 +140,28 @@ int main(int argc, char** argv) {
             scenario.pipeline.dwa_options.dynamic_collision_samples =
                 std::stoi(argv[++i]);
             has_dwa_dynamic_collision_samples = true;
+        } else if (arg == "--mppi-prediction-time" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.prediction_time =
+                std::stod(argv[++i]);
+            has_mppi_prediction_time = true;
+        } else if (arg == "--mppi-horizon" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.horizon = std::stoi(argv[++i]);
+            has_mppi_horizon = true;
+        } else if (arg == "--mppi-rollouts" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.rollouts = std::stoi(argv[++i]);
+            has_mppi_rollouts = true;
+        } else if (arg == "--mppi-temperature" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.temperature =
+                std::stod(argv[++i]);
+            has_mppi_temperature = true;
+        } else if (arg == "--mppi-velocity-noise" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.velocity_noise =
+                std::stod(argv[++i]);
+            has_mppi_velocity_noise = true;
+        } else if (arg == "--mppi-steering-noise" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.steering_noise =
+                std::stod(argv[++i]);
+            has_mppi_steering_noise = true;
         } else if (arg == "--start" && i + 2 < argc) {
             scenario.start = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             has_start = true;
@@ -206,6 +240,24 @@ int main(int argc, char** argv) {
         if (has_dwa_dynamic_collision_samples)
             scenario.pipeline.dwa_options.dynamic_collision_samples =
                 pipeline_override.dwa_options.dynamic_collision_samples;
+        if (has_mppi_prediction_time)
+            scenario.pipeline.mppi_options.prediction_time =
+                pipeline_override.mppi_options.prediction_time;
+        if (has_mppi_horizon)
+            scenario.pipeline.mppi_options.horizon =
+                pipeline_override.mppi_options.horizon;
+        if (has_mppi_rollouts)
+            scenario.pipeline.mppi_options.rollouts =
+                pipeline_override.mppi_options.rollouts;
+        if (has_mppi_temperature)
+            scenario.pipeline.mppi_options.temperature =
+                pipeline_override.mppi_options.temperature;
+        if (has_mppi_velocity_noise)
+            scenario.pipeline.mppi_options.velocity_noise =
+                pipeline_override.mppi_options.velocity_noise;
+        if (has_mppi_steering_noise)
+            scenario.pipeline.mppi_options.steering_noise =
+                pipeline_override.mppi_options.steering_noise;
         if (has_max_steps) scenario.pipeline.max_steps =
             pipeline_override.max_steps;
         if (has_velocity) scenario.pipeline.trajectory_options.target_velocity =

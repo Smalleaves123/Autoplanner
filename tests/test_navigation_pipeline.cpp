@@ -12,6 +12,7 @@
 #include "autompc/core/trajectory.h"
 #include "robotnav/dwa_local_planner.h"
 #include "robotnav/dynamic_navigation_pipeline.h"
+#include "robotnav/mppi_local_planner.h"
 #include "robotnav/navigation_pipeline.h"
 #include "robotnav/navigation_trace.h"
 #include "robotnav/safety_supervisor.h"
@@ -114,6 +115,56 @@ TEST(DwaLocalPlannerTest, RejectsCommandsEnteringPredictedObstacle) {
     EXPECT_TRUE(decision.feasible);
     EXPECT_GT(decision.dynamic_collision_rejections, 0u);
     EXPECT_TRUE(std::isfinite(decision.minimum_dynamic_clearance));
+}
+
+TEST(MppiLocalPlannerTest, SamplesDeterministicallyAndAvoidsPrediction) {
+    const auto path = robotnav_test::artifactPath("mppi_dynamic_map.txt");
+    {
+        std::ofstream output(path);
+        ASSERT_TRUE(output.is_open());
+        for (int row = 0; row < 6; ++row) {
+            output << std::string(20, '0') << '\n';
+        }
+    }
+
+    autoplanner::GridMap map;
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
+    autoplanner::GridCollisionChecker checker(map);
+    autompc::SimulationOptions simulation;
+    simulation.dt = 0.1;
+    simulation.max_acceleration = 10.0;
+    simulation.max_deceleration = 10.0;
+    simulation.max_steering_rate = 10.0;
+    robotnav::MppiOptions options;
+    options.prediction_time = 2.0;
+    options.horizon = 20;
+    options.rollouts = 48;
+    options.temperature = 0.4;
+    options.velocity_noise = 0.4;
+    options.steering_noise = 0.25;
+    options.dynamic_collision_samples = 5;
+    robotnav::MppiLocalPlanner planner(checker, simulation, options);
+
+    const auto trajectory = autompc::makeStraightLine(
+        1.0, 2.5, 8.0, 2.5, 1.0, 30);
+    const std::vector<robotnav::MovingObstacle> obstacles = {
+        {0, 10, {3, 2}, 0, 0}};
+    const robotnav::DynamicObstacleContext context{
+        &obstacles, 0, 1.0, 0.0};
+    const auto first = planner.computeCommand(
+        {1.0, 2.5, 0.0, 1.0}, 0.0, trajectory, {1.0, 0.0}, context);
+    const auto second = planner.computeCommand(
+        {1.0, 2.5, 0.0, 1.0}, 0.0, trajectory, {1.0, 0.0}, context);
+
+    EXPECT_TRUE(first.feasible);
+    EXPECT_GT(first.feasible_rollouts, 0u);
+    EXPECT_GT(first.dynamic_collision_rejections, 0u);
+    EXPECT_TRUE(std::isfinite(first.minimum_dynamic_clearance));
+    EXPECT_DOUBLE_EQ(first.command.velocity, second.command.velocity);
+    EXPECT_DOUBLE_EQ(first.command.steering, second.command.steering);
+
+    std::error_code error;
+    std::filesystem::remove(path, error);
 }
 
 TEST(SafetySupervisorTest, RejectsInvalidTrajectoryAndCommand) {
@@ -232,6 +283,28 @@ TEST(NavigationPipelineTest, SupportsDwaLocalPlanner) {
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_EQ(result.metrics.local_planner, "dwa");
     EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
+}
+
+TEST(NavigationPipelineTest, SupportsMppiLocalPlanner) {
+    const auto map = loadSimpleMap();
+    robotnav::PipelineConfig config;
+    config.planner = "astar";
+    config.controller = "stanley";
+    config.local_planner = "mppi";
+    config.mppi_options.prediction_time = 0.8;
+    config.mppi_options.horizon = 10;
+    config.mppi_options.rollouts = 32;
+    config.max_steps = 3000;
+
+    const robotnav::NavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_EQ(result.metrics.local_planner, "mppi");
+    EXPECT_GT(result.metrics.local_planner_rollouts, 0u);
 }
 
 TEST(NavigationPipelineTest, SupportsCurvatureConstrainedSmoothing) {
@@ -384,6 +457,34 @@ TEST(DynamicNavigationPipelineTest, SupportsDwaWithMovingObstacles) {
     EXPECT_FALSE(result.metrics.safe_stop);
 }
 
+TEST(DynamicNavigationPipelineTest, SupportsMppiWithMovingObstacles) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.local_planner = "mppi";
+    config.pipeline.mppi_options.prediction_time = 0.8;
+    config.pipeline.mppi_options.horizon = 10;
+    config.pipeline.mppi_options.rollouts = 32;
+    config.pipeline.max_steps = 1200;
+    config.frames = 20;
+    config.steps_per_frame = 40;
+    config.auto_insert_obstacles = false;
+    config.moving_obstacles.push_back({1, 3, {3, 10}, 1, 0});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_EQ(result.metrics.local_planner, "mppi");
+    EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
+    EXPECT_GT(result.metrics.local_planner_rollouts, 0u);
+    EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+}
+
 TEST(DynamicNavigationPipelineTest, SupportsSpaceTimeAStarPrediction) {
     const auto map = loadSimpleMap();
     robotnav::DynamicPipelineConfig config;
@@ -467,6 +568,14 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "    steering_samples: 5\n"
                << "    dynamic_obstacle_margin: 0.2\n"
                << "    dynamic_collision_samples: 5\n"
+               << "  mppi:\n"
+               << "    prediction_time: 0.9\n"
+               << "    horizon: 12\n"
+               << "    rollouts: 24\n"
+               << "    temperature: 0.35\n"
+               << "    velocity_noise: 0.3\n"
+               << "    steering_noise: 0.2\n"
+               << "    dynamic_clearance: 0.6\n"
                << "pipeline:\n"
                << "  max_steps: 123\n"
                << "safety:\n"
@@ -493,6 +602,13 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(
         scenario.pipeline.dwa_options.dynamic_obstacle_margin, 0.2);
     EXPECT_EQ(scenario.pipeline.dwa_options.dynamic_collision_samples, 5);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.prediction_time, 0.9);
+    EXPECT_EQ(scenario.pipeline.mppi_options.horizon, 12);
+    EXPECT_EQ(scenario.pipeline.mppi_options.rollouts, 24);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.temperature, 0.35);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.velocity_noise, 0.3);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.steering_noise, 0.2);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.dynamic_clearance, 0.6);
     EXPECT_EQ(scenario.pipeline.max_steps, 123u);
     EXPECT_FALSE(scenario.pipeline.safety_options.enforce_collision);
 

@@ -44,3 +44,20 @@ local_planner:
   dwa:
     dynamic_obstacle_margin: 0.0
     dynamic_collision_samples: 3
+  mppi:
+    prediction_time: 1.0
+    horizon: 20
+    rollouts: 64
+    temperature: 0.5
+    velocity_noise: 0.35
+    steering_noise: 0.12
+    trajectory_weight: 1.0
+    heading_weight: 0.25
+    velocity_weight: 0.15
+    control_weight: 0.2
+    control_rate_weight: 0.1
+    dynamic_obstacle_weight: 1.0
+    dynamic_clearance: 0.5
+    dynamic_obstacle_margin: 0.0
+    dynamic_collision_samples: 3
+    random_seed: 42

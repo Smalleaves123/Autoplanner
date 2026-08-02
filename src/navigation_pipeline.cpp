@@ -118,7 +118,8 @@ PipelineResult NavigationPipeline::run(
         return fail(StatusCode::InvalidConfiguration,
                     "pipeline step configuration is invalid");
     }
-    if (config.local_planner != "none" && config.local_planner != "dwa") {
+    if (config.local_planner != "none" && config.local_planner != "dwa" &&
+        config.local_planner != "mppi") {
         return fail(StatusCode::InvalidConfiguration,
                     "unsupported local planner: " + config.local_planner);
     }
@@ -131,6 +132,24 @@ PipelineResult NavigationPipeline::run(
          config.dwa_options.dynamic_obstacle_margin < 0.0)) {
         return fail(StatusCode::InvalidConfiguration,
                     "invalid DWA local planner configuration");
+    }
+    if (config.local_planner == "mppi" &&
+        (config.mppi_options.prediction_time <= 0.0 ||
+         config.mppi_options.horizon <= 0 ||
+         config.mppi_options.rollouts <= 0 ||
+         !std::isfinite(config.mppi_options.temperature) ||
+         config.mppi_options.temperature <= 0.0 ||
+         !std::isfinite(config.mppi_options.velocity_noise) ||
+         config.mppi_options.velocity_noise < 0.0 ||
+         !std::isfinite(config.mppi_options.steering_noise) ||
+         config.mppi_options.steering_noise < 0.0 ||
+         config.mppi_options.dynamic_collision_samples <= 0 ||
+         !std::isfinite(config.mppi_options.dynamic_clearance) ||
+         config.mppi_options.dynamic_clearance < 0.0 ||
+         !std::isfinite(config.mppi_options.dynamic_obstacle_margin) ||
+         config.mppi_options.dynamic_obstacle_margin < 0.0)) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "invalid MPPI local planner configuration");
     }
 
     autoplanner::RobotFootprint footprint;
@@ -304,10 +323,15 @@ PipelineResult NavigationPipeline::run(
     autompc::KinematicBicycleSimulator simulator(
         state, config.simulation_options);
     std::unique_ptr<DwaLocalPlanner> dwa;
+    std::unique_ptr<MppiLocalPlanner> mppi;
     if (config.local_planner == "dwa") {
         dwa = std::make_unique<DwaLocalPlanner>(
             *collision_checker, config.simulation_options,
             config.dwa_options);
+    } else if (config.local_planner == "mppi") {
+        mppi = std::make_unique<MppiLocalPlanner>(
+            *collision_checker, config.simulation_options,
+            config.mppi_options);
     }
     std::unique_ptr<autompc::PIDController> pid;
     std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
@@ -369,6 +393,37 @@ PipelineResult NavigationPipeline::run(
                 result.metrics.safe_stop = true;
                 return fail(StatusCode::ControllerInfeasible,
                             "DWA found no collision-free local command");
+            }
+            if (std::abs(decision.command.velocity - command.velocity) >
+                    1e-9 ||
+                std::abs(decision.command.steering - command.steering) >
+                    1e-9) {
+                ++result.metrics.local_planner_adjustments;
+            }
+            command = decision.command;
+            result.metrics.local_planner_collision_rejections +=
+                decision.dynamic_collision_rejections;
+            if (std::isfinite(decision.minimum_dynamic_clearance)) {
+                if (result.metrics.minimum_dynamic_obstacle_clearance == 0.0) {
+                    result.metrics.minimum_dynamic_obstacle_clearance =
+                        decision.minimum_dynamic_clearance;
+                } else {
+                    result.metrics.minimum_dynamic_obstacle_clearance =
+                        std::min(result.metrics.minimum_dynamic_obstacle_clearance,
+                                 decision.minimum_dynamic_clearance);
+                }
+            }
+        } else if (mppi) {
+            const auto decision = mppi->computeCommand(
+                state, simulator.steering(), result.trajectory, command);
+            result.metrics.local_planner_rollouts +=
+                decision.feasible_rollouts;
+            result.metrics.local_planner_collision_rejections +=
+                decision.dynamic_collision_rejections;
+            if (!decision.feasible) {
+                result.metrics.safe_stop = true;
+                return fail(StatusCode::ControllerInfeasible,
+                            "MPPI found no collision-free local command");
             }
             if (std::abs(decision.command.velocity - command.velocity) >
                     1e-9 ||
@@ -473,6 +528,13 @@ bool savePipelineMetricsJson(const PipelineResult& result,
            << "  \"controller_trace_steps\": " << result.metrics.steps << ",\n"
            << "  \"local_planner_adjustments\": "
            << result.metrics.local_planner_adjustments << ",\n"
+           << "  \"local_planner_rollouts\": "
+           << result.metrics.local_planner_rollouts << ",\n"
+           << "  \"local_planner_collision_rejections\": "
+           << result.metrics.local_planner_collision_rejections << ",\n"
+           << "  \"minimum_dynamic_obstacle_clearance\": ";
+    writeJsonNumber(output, result.metrics.minimum_dynamic_obstacle_clearance);
+    output << ",\n"
            << "  \"planning_time_ms\": ";
     writeJsonNumber(output, result.metrics.planning_time_ms);
     output << ",\n  \"path_length\": ";

@@ -62,6 +62,7 @@ struct DynamicPipelineMetrics {
     std::size_t replanning_count = 0;
     std::size_t space_time_planning_count = 0;
     std::size_t local_planner_adjustments = 0;
+    std::size_t local_planner_rollouts = 0;
     std::size_t external_update_count = 0;
     std::size_t moving_obstacle_update_count = 0;
     std::size_t moving_obstacle_conflict_count = 0;

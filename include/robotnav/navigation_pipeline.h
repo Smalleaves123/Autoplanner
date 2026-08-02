@@ -27,6 +27,9 @@ struct PipelineMetrics {
     double goal_distance = 0.0;
     std::size_t steps = 0;
     std::size_t local_planner_adjustments = 0;
+    std::size_t local_planner_rollouts = 0;
+    std::size_t local_planner_collision_rejections = 0;
+    double minimum_dynamic_obstacle_clearance = 0.0;
     bool collision_free = false;
     bool goal_reached = false;
     bool safe_stop = false;

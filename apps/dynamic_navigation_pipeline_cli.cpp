@@ -28,12 +28,18 @@ void printHelp() {
         << "  --inflate             inflate planning map\n"
         << "  --smooth NAME         none|shortcut|curvature\n"
         << "  --smooth-max-curvature N curvature smoother limit\n"
-        << "  --local-planner NAME  none|dwa\n"
+        << "  --local-planner NAME  none|dwa|mppi\n"
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
         << "  --dwa-steering-samples N DWA steering samples\n"
         << "  --dwa-dynamic-obstacle-margin N  dynamic obstacle margin\n"
         << "  --dwa-dynamic-collision-samples N dynamic rollout samples\n"
+        << "  --mppi-prediction-time N MPPI rollout horizon seconds\n"
+        << "  --mppi-horizon N       MPPI control horizon\n"
+        << "  --mppi-rollouts N      MPPI sampled rollouts\n"
+        << "  --mppi-temperature N   MPPI soft-min temperature\n"
+        << "  --mppi-velocity-noise N MPPI velocity noise\n"
+        << "  --mppi-steering-noise N MPPI steering noise\n"
         << "  --velocity N          target trajectory velocity\n"
         << "  --prediction-horizon N  space-time planner horizon frames\n"
         << "  --frames N            dynamic obstacle update frames\n"
@@ -74,6 +80,12 @@ int main(int argc, char** argv) {
     bool has_dwa_steering_samples = false;
     bool has_dwa_dynamic_obstacle_margin = false;
     bool has_dwa_dynamic_collision_samples = false;
+    bool has_mppi_prediction_time = false;
+    bool has_mppi_horizon = false;
+    bool has_mppi_rollouts = false;
+    bool has_mppi_temperature = false;
+    bool has_mppi_velocity_noise = false;
+    bool has_mppi_steering_noise = false;
     bool has_velocity = false;
     std::string map_override;
     autoplanner::Point2i start_override;
@@ -93,6 +105,12 @@ int main(int argc, char** argv) {
     int dwa_steering_samples_override = 0;
     double dwa_dynamic_obstacle_margin_override = 0.0;
     int dwa_dynamic_collision_samples_override = 0;
+    double mppi_prediction_time_override = 0.0;
+    int mppi_horizon_override = 0;
+    int mppi_rollouts_override = 0;
+    double mppi_temperature_override = 0.0;
+    double mppi_velocity_noise_override = 0.0;
+    double mppi_steering_noise_override = 0.0;
     double velocity_override = 0.0;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
     std::vector<robotnav::MovingObstacle> moving_obstacles;
@@ -158,6 +176,24 @@ int main(int argc, char** argv) {
         } else if (arg == "--dwa-dynamic-collision-samples" && i + 1 < argc) {
             dwa_dynamic_collision_samples_override = std::stoi(argv[++i]);
             has_dwa_dynamic_collision_samples = true;
+        } else if (arg == "--mppi-prediction-time" && i + 1 < argc) {
+            mppi_prediction_time_override = std::stod(argv[++i]);
+            has_mppi_prediction_time = true;
+        } else if (arg == "--mppi-horizon" && i + 1 < argc) {
+            mppi_horizon_override = std::stoi(argv[++i]);
+            has_mppi_horizon = true;
+        } else if (arg == "--mppi-rollouts" && i + 1 < argc) {
+            mppi_rollouts_override = std::stoi(argv[++i]);
+            has_mppi_rollouts = true;
+        } else if (arg == "--mppi-temperature" && i + 1 < argc) {
+            mppi_temperature_override = std::stod(argv[++i]);
+            has_mppi_temperature = true;
+        } else if (arg == "--mppi-velocity-noise" && i + 1 < argc) {
+            mppi_velocity_noise_override = std::stod(argv[++i]);
+            has_mppi_velocity_noise = true;
+        } else if (arg == "--mppi-steering-noise" && i + 1 < argc) {
+            mppi_steering_noise_override = std::stod(argv[++i]);
+            has_mppi_steering_noise = true;
         } else if (arg == "--velocity" && i + 1 < argc) {
             velocity_override = std::stod(argv[++i]);
             has_velocity = true;
@@ -254,6 +290,22 @@ int main(int argc, char** argv) {
     if (has_dwa_dynamic_collision_samples)
         scenario.pipeline.dwa_options.dynamic_collision_samples =
             dwa_dynamic_collision_samples_override;
+    if (has_mppi_prediction_time)
+        scenario.pipeline.mppi_options.prediction_time =
+            mppi_prediction_time_override;
+    if (has_mppi_horizon)
+        scenario.pipeline.mppi_options.horizon = mppi_horizon_override;
+    if (has_mppi_rollouts)
+        scenario.pipeline.mppi_options.rollouts = mppi_rollouts_override;
+    if (has_mppi_temperature)
+        scenario.pipeline.mppi_options.temperature =
+            mppi_temperature_override;
+    if (has_mppi_velocity_noise)
+        scenario.pipeline.mppi_options.velocity_noise =
+            mppi_velocity_noise_override;
+    if (has_mppi_steering_noise)
+        scenario.pipeline.mppi_options.steering_noise =
+            mppi_steering_noise_override;
     if (has_velocity) {
         scenario.pipeline.trajectory_options.target_velocity = velocity_override;
     }

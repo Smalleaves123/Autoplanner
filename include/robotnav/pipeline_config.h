@@ -7,6 +7,7 @@
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autoplanner/core/planner_factory.h"
 #include "robotnav/dwa_local_planner.h"
+#include "robotnav/mppi_local_planner.h"
 #include "robotnav/safety_supervisor.h"
 
 namespace robotnav {
@@ -33,6 +34,7 @@ struct PipelineConfig {
     autompc::SimulationOptions simulation_options;
     SafetyOptions safety_options;
     DwaOptions dwa_options;
+    MppiOptions mppi_options;
 
     std::size_t max_steps = 2000;
 };

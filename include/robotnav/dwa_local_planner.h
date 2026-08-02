@@ -7,7 +7,7 @@
 #include "autompc/core/types.h"
 #include "autompc/simulation/kinematic_bicycle.h"
 #include "autoplanner/collision/collision_checker.h"
-#include "robotnav/dynamic_obstacle_prediction.h"
+#include "robotnav/dynamic_obstacle_context.h"
 
 namespace robotnav {
 
@@ -23,12 +23,7 @@ struct DwaOptions {
     int dynamic_collision_samples = 3;
 };
 
-struct DwaDynamicContext {
-    const std::vector<MovingObstacle>* obstacles = nullptr;
-    std::size_t current_frame = 0;
-    double frame_period_seconds = 1.0;
-    double collision_margin = 0.0;
-};
+using DwaDynamicContext = DynamicObstacleContext;
 
 struct DwaDecision {
     bool feasible = false;
