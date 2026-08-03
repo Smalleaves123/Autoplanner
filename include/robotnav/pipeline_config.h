@@ -36,6 +36,11 @@ struct PipelineConfig {
     DwaOptions dwa_options;
     MppiOptions mppi_options;
 
+    // Optional risk-aware cost used by the dynamic Space-Time A* planner.
+    // Zero preserves hard-collision-only planning.
+    double dynamic_prediction_risk_weight = 0.0;
+    double dynamic_prediction_risk_clearance = 0.0;
+
     std::size_t max_steps = 2000;
 };
 

@@ -61,6 +61,25 @@ bool predictedFree(const std::vector<MovingObstacle>& obstacles,
         static_cast<double>(absolute_frame), obstacle_margin);
 }
 
+double predictedRiskCost(const std::vector<MovingObstacle>& obstacles,
+                         const autoplanner::Point2i& cell,
+                         std::size_t absolute_frame,
+                         const SpaceTimeAStarOptions& options) {
+    if (options.risk_weight <= 0.0 || options.risk_clearance <= 0.0) {
+        return 0.0;
+    }
+    const double clearance = predictedObstacleClearance(
+        obstacles,
+        {static_cast<double>(cell.x), static_cast<double>(cell.y)},
+        static_cast<double>(absolute_frame));
+    if (!std::isfinite(clearance) || clearance >= options.risk_clearance) {
+        return 0.0;
+    }
+    const double normalized =
+        (options.risk_clearance - clearance) / options.risk_clearance;
+    return options.risk_weight * normalized * normalized;
+}
+
 autoplanner::Path2d reconstructPath(
     const autoplanner::GridMap& map,
     const std::vector<Parent>& parents,
@@ -108,7 +127,10 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
 
     if (map.isEmpty() || options_.max_time_steps == 0 ||
         !std::isfinite(options_.obstacle_margin) ||
-        options_.obstacle_margin < 0.0) {
+        options_.obstacle_margin < 0.0 ||
+        !std::isfinite(options_.risk_weight) || options_.risk_weight < 0.0 ||
+        !std::isfinite(options_.risk_clearance) ||
+        options_.risk_clearance < 0.0) {
         result.message = "Space-time planner is not initialized.";
         return result;
     }
@@ -199,7 +221,11 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
                     : ((dxs[index] != 0 && dys[index] != 0)
                            ? std::sqrt(2.0)
                            : 1.0);
-            const double tentative_g = g_score[current_index] + step_cost;
+            const double risk_cost = predictedRiskCost(
+                moving_obstacles, next_cell, start_frame + next_time,
+                options_);
+            const double tentative_g = g_score[current_index] + step_cost +
+                                       risk_cost;
             if (tentative_g < g_score[next_index]) {
                 g_score[next_index] = tentative_g;
                 parents[next_index] = {current.x, current.y, current.time};

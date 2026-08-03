@@ -42,6 +42,12 @@ bool loadScenarioConfig(const std::string& file_path,
         "pipeline.max_steps", static_cast<int>(pipeline.max_steps));
     if (max_steps < 0) return false;
     pipeline.max_steps = static_cast<std::size_t>(max_steps);
+    pipeline.dynamic_prediction_risk_weight = loader.getDouble(
+        "dynamic_prediction.risk_weight",
+        pipeline.dynamic_prediction_risk_weight);
+    pipeline.dynamic_prediction_risk_clearance = loader.getDouble(
+        "dynamic_prediction.risk_clearance",
+        pipeline.dynamic_prediction_risk_clearance);
 
     pipeline.planner_options.allow_diagonal = loader.getBool(
         "planner.allow_diagonal", pipeline.planner_options.allow_diagonal);

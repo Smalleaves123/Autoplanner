@@ -17,6 +17,9 @@ robot:
   inflate: false
 pipeline:
   max_steps: 2500
+dynamic_prediction:
+  risk_weight: 0.0
+  risk_clearance: 0.0
 smoothing:
   name: shortcut
   iterations: 100

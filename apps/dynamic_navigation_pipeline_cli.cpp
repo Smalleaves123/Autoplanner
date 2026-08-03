@@ -40,6 +40,8 @@ void printHelp() {
         << "  --mppi-temperature N   MPPI soft-min temperature\n"
         << "  --mppi-velocity-noise N MPPI velocity noise\n"
         << "  --mppi-steering-noise N MPPI steering noise\n"
+        << "  --prediction-risk-weight N Space-time prediction risk weight\n"
+        << "  --prediction-risk-clearance N risk clearance in map cells\n"
         << "  --velocity N          target trajectory velocity\n"
         << "  --prediction-horizon N  space-time planner horizon frames\n"
         << "  --frames N            dynamic obstacle update frames\n"
@@ -50,6 +52,8 @@ void printHelp() {
         << "  --obstacle FRAME X Y  externally occupy a cell at frame\n"
         << "  --clear-obstacle FRAME X Y  externally clear a cell at frame\n"
         << "  --moving-obstacle START END X Y DX DY  moving occupied cell\n"
+        << "  --moving-obstacle-radius N  footprint radius for moving obstacles\n"
+        << "  --moving-obstacle-uncertainty-growth N radius growth per frame\n"
         << "  --no-auto-obstacles   disable automatic obstacle insertion\n"
         << "  --output-dir PATH     output directory\n";
 }
@@ -86,6 +90,10 @@ int main(int argc, char** argv) {
     bool has_mppi_temperature = false;
     bool has_mppi_velocity_noise = false;
     bool has_mppi_steering_noise = false;
+    bool has_prediction_risk_weight = false;
+    bool has_prediction_risk_clearance = false;
+    bool has_moving_obstacle_radius = false;
+    bool has_moving_obstacle_uncertainty_growth = false;
     bool has_velocity = false;
     std::string map_override;
     autoplanner::Point2i start_override;
@@ -111,6 +119,10 @@ int main(int argc, char** argv) {
     double mppi_temperature_override = 0.0;
     double mppi_velocity_noise_override = 0.0;
     double mppi_steering_noise_override = 0.0;
+    double prediction_risk_weight_override = 0.0;
+    double prediction_risk_clearance_override = 0.0;
+    double moving_obstacle_radius = 0.0;
+    double moving_obstacle_uncertainty_growth = 0.0;
     double velocity_override = 0.0;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
     std::vector<robotnav::MovingObstacle> moving_obstacles;
@@ -194,6 +206,12 @@ int main(int argc, char** argv) {
         } else if (arg == "--mppi-steering-noise" && i + 1 < argc) {
             mppi_steering_noise_override = std::stod(argv[++i]);
             has_mppi_steering_noise = true;
+        } else if (arg == "--prediction-risk-weight" && i + 1 < argc) {
+            prediction_risk_weight_override = std::stod(argv[++i]);
+            has_prediction_risk_weight = true;
+        } else if (arg == "--prediction-risk-clearance" && i + 1 < argc) {
+            prediction_risk_clearance_override = std::stod(argv[++i]);
+            has_prediction_risk_clearance = true;
         } else if (arg == "--velocity" && i + 1 < argc) {
             velocity_override = std::stod(argv[++i]);
             has_velocity = true;
@@ -233,6 +251,13 @@ int main(int argc, char** argv) {
             obstacle.dx_per_frame = std::stoi(argv[++i]);
             obstacle.dy_per_frame = std::stoi(argv[++i]);
             moving_obstacles.push_back(obstacle);
+        } else if (arg == "--moving-obstacle-radius" && i + 1 < argc) {
+            moving_obstacle_radius = std::stod(argv[++i]);
+            has_moving_obstacle_radius = true;
+        } else if (arg == "--moving-obstacle-uncertainty-growth" &&
+                   i + 1 < argc) {
+            moving_obstacle_uncertainty_growth = std::stod(argv[++i]);
+            has_moving_obstacle_uncertainty_growth = true;
         } else if (arg == "--no-auto-obstacles") {
             dynamic.auto_insert_obstacles = false;
         } else if (arg == "--output-dir" && i + 1 < argc) {
@@ -306,12 +331,27 @@ int main(int argc, char** argv) {
     if (has_mppi_steering_noise)
         scenario.pipeline.mppi_options.steering_noise =
             mppi_steering_noise_override;
+    if (has_prediction_risk_weight)
+        scenario.pipeline.dynamic_prediction_risk_weight =
+            prediction_risk_weight_override;
+    if (has_prediction_risk_clearance)
+        scenario.pipeline.dynamic_prediction_risk_clearance =
+            prediction_risk_clearance_override;
     if (has_velocity) {
         scenario.pipeline.trajectory_options.target_velocity = velocity_override;
     }
 
     dynamic.pipeline = scenario.pipeline;
     dynamic.obstacle_updates = std::move(obstacle_updates);
+    for (auto& obstacle : moving_obstacles) {
+        if (has_moving_obstacle_radius) {
+            obstacle.radius = moving_obstacle_radius;
+        }
+        if (has_moving_obstacle_uncertainty_growth) {
+            obstacle.uncertainty_growth_per_frame =
+                moving_obstacle_uncertainty_growth;
+        }
+    }
     dynamic.moving_obstacles = std::move(moving_obstacles);
     if (no_diagonal) dynamic.pipeline.planner_options.allow_diagonal = false;
     autoplanner::GridMap map;

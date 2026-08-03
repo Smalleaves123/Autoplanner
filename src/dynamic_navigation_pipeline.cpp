@@ -320,6 +320,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     result.metrics.smoother = config.pipeline.smoother;
     result.metrics.local_planner = config.pipeline.local_planner;
     result.metrics.frames_requested = config.frames;
+    result.metrics.prediction_risk_weight =
+        config.pipeline.dynamic_prediction_risk_weight;
+    result.metrics.prediction_risk_clearance =
+        config.pipeline.dynamic_prediction_risk_clearance;
 
     auto fail = [&result](StatusCode status, const std::string& message) {
         result.metrics.status = status;
@@ -375,6 +379,13 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         return fail(StatusCode::InvalidConfiguration,
                     "invalid MPPI local planner configuration");
     }
+    if (!std::isfinite(config.pipeline.dynamic_prediction_risk_weight) ||
+        config.pipeline.dynamic_prediction_risk_weight < 0.0 ||
+        !std::isfinite(config.pipeline.dynamic_prediction_risk_clearance) ||
+        config.pipeline.dynamic_prediction_risk_clearance < 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "invalid dynamic prediction risk configuration");
+    }
     const double local_dynamic_margin =
         config.pipeline.local_planner == "mppi"
             ? config.pipeline.mppi_options.dynamic_obstacle_margin
@@ -413,7 +424,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         true,
         config.prediction_horizon_frames,
         geometry.circumscribed_radius +
-            local_dynamic_margin});
+            local_dynamic_margin,
+        config.pipeline.dynamic_prediction_risk_weight,
+        config.pipeline.dynamic_prediction_risk_clearance});
     auto initial = use_space_time_astar
         ? space_time_astar.plan(geometry.planning_map, start, goal,
                                 config.moving_obstacles, 0)
@@ -977,6 +990,10 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     writeJsonNumber(output, result.metrics.mean_control_jump);
     output << ",\n  \"minimum_dynamic_obstacle_clearance\": ";
     writeJsonNumber(output, result.metrics.minimum_dynamic_obstacle_clearance);
+    output << ",\n  \"prediction_risk_weight\": ";
+    writeJsonNumber(output, result.metrics.prediction_risk_weight);
+    output << ",\n  \"prediction_risk_clearance\": ";
+    writeJsonNumber(output, result.metrics.prediction_risk_clearance);
     output << ",\n  \"goal_distance\": ";
     writeJsonNumber(output, result.metrics.goal_distance);
     output << "\n}\n";

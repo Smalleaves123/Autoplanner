@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -76,6 +77,49 @@ TEST(DynamicObstaclePredictionTest, RejectsInvalidPredictionConfiguration) {
         map, {1, 1}, {5, 5}, config);
     EXPECT_EQ(result.metrics.status,
               robotnav::StatusCode::InvalidConfiguration);
+}
+
+TEST(DynamicNavigationPipelineTest, RejectsInvalidPredictionRisk) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.dynamic_prediction_risk_weight = -1.0;
+    config.auto_insert_obstacles = false;
+    config.frames = 1;
+    config.steps_per_frame = 1;
+
+    const auto result = robotnav::DynamicNavigationPipeline{}.run(
+        map, {1, 1}, {5, 5}, config);
+    EXPECT_EQ(result.metrics.status,
+              robotnav::StatusCode::InvalidConfiguration);
+}
+
+TEST(SpaceTimeAStarTest, RiskCostPrefersExtraClearance) {
+    const auto path = robotnav_test::artifactPath("space_time_risk_map.txt");
+    {
+        std::ofstream output(path);
+        ASSERT_TRUE(output.is_open());
+        for (int row = 0; row < 7; ++row) {
+            output << std::string(9, '0') << '\n';
+        }
+    }
+
+    autoplanner::GridMap map;
+    ASSERT_TRUE(map.loadFromTxt(path.string()));
+    const std::vector<robotnav::MovingObstacle> obstacles = {
+        {0, 20, {4, 0}, 0, 0, 0.5, 0.0}};
+    const robotnav::SpaceTimeAStarPlanner planner({
+        false, true, 20, 0.0, 8.0, 2.0});
+    const auto result = planner.plan(
+        map, {1, 2}, {7, 2}, obstacles, 0);
+
+    ASSERT_TRUE(result.success) << result.message;
+    ASSERT_FALSE(result.path.empty());
+    EXPECT_TRUE(std::any_of(
+        result.path.begin(), result.path.end(),
+        [](const autoplanner::Point2d& point) { return point.y > 2.0; }));
+
+    std::error_code error;
+    std::filesystem::remove(path, error);
 }
 
 TEST(DwaLocalPlannerTest, RejectsCommandsEnteringPredictedObstacle) {
@@ -576,6 +620,9 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "    velocity_noise: 0.3\n"
                << "    steering_noise: 0.2\n"
                << "    dynamic_clearance: 0.6\n"
+               << "dynamic_prediction:\n"
+               << "  risk_weight: 2.5\n"
+               << "  risk_clearance: 1.2\n"
                << "pipeline:\n"
                << "  max_steps: 123\n"
                << "safety:\n"
@@ -609,6 +656,10 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.velocity_noise, 0.3);
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.steering_noise, 0.2);
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.dynamic_clearance, 0.6);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.dynamic_prediction_risk_weight, 2.5);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.dynamic_prediction_risk_clearance, 1.2);
     EXPECT_EQ(scenario.pipeline.max_steps, 123u);
     EXPECT_FALSE(scenario.pipeline.safety_options.enforce_collision);
 

@@ -193,6 +193,18 @@ def run_dynamic_pipeline(args, build_dir: Path, map_path: Path,
             "--moving-obstacle", str(start), str(end), str(x), str(y),
             str(dx), str(dy),
         ]
+    if args.moving_obstacle_radius > 0.0:
+        command += ["--moving-obstacle-radius",
+                    str(args.moving_obstacle_radius)]
+    if args.moving_obstacle_uncertainty_growth > 0.0:
+        command += ["--moving-obstacle-uncertainty-growth",
+                    str(args.moving_obstacle_uncertainty_growth)]
+    if args.prediction_risk_weight > 0.0:
+        command += ["--prediction-risk-weight",
+                    str(args.prediction_risk_weight)]
+    if args.prediction_risk_clearance > 0.0:
+        command += ["--prediction-risk-clearance",
+                    str(args.prediction_risk_clearance)]
 
     print("Running dynamic C++ navigation pipeline...")
     completed = subprocess.run(command, text=True)
@@ -276,6 +288,11 @@ def main() -> int:
                         default=[], metavar=("FRAME", "X", "Y"))
     parser.add_argument("--moving-obstacle", nargs=6, type=int, action="append",
                         default=[], metavar=("START", "END", "X", "Y", "DX", "DY"))
+    parser.add_argument("--moving-obstacle-radius", type=float, default=0.0)
+    parser.add_argument("--moving-obstacle-uncertainty-growth",
+                        type=float, default=0.0)
+    parser.add_argument("--prediction-risk-weight", type=float, default=0.0)
+    parser.add_argument("--prediction-risk-clearance", type=float, default=0.0)
     parser.add_argument("--plot", action="store_true", default=False,
                         help="write a navigation.png visual summary")
     parser.add_argument("--plot-output",

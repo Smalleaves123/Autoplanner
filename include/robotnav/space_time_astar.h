@@ -15,6 +15,8 @@ struct SpaceTimeAStarOptions {
     bool allow_wait = true;
     std::size_t max_time_steps = 120;
     double obstacle_margin = 0.0;
+    double risk_weight = 0.0;
+    double risk_clearance = 0.0;
 };
 
 class SpaceTimeAStarPlanner {

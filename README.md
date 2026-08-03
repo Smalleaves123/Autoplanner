@@ -165,6 +165,26 @@ The batch runner invokes the C++ planner CLI and collects the machine-readable
 `metrics.json` output, making it easy to add maps, planners, repeats, and plots
 without changing the C++ benchmark code.
 
+To compare the reusable local-planner pipeline, run the ROS-free DWA/MPPI
+benchmark. It evaluates the same global plan with the nominal controller,
+DWA, and MPPI, then repeats the combinations with a moving obstacle:
+
+```bash
+python autoplanner/scripts/benchmark_local_planners.py \
+    --build_dir build \
+    --output_dir autoplanner/results/local_planner_benchmark \
+    --repeat 2
+
+python autoplanner/scripts/compare_results.py \
+    autoplanner/results/local_planner_benchmark
+```
+
+The benchmark writes `local_planner_results.csv`,
+`dynamic_local_planner_results.csv`, the raw per-run pipeline artifacts, and
+`local_planner_report.txt`. Metrics distinguish run success, goal reach,
+safe-stop, control effort, MPPI rollout count, collision rejections, and
+minimum predicted dynamic-obstacle clearance.
+
 The navigation pipeline applies collision-safe shortcut smoothing by default;
 pass `--smooth none` when the raw planner path is required.
 
@@ -371,6 +391,23 @@ check so the demonstration does not intentionally create an unsolvable map.
 To model a simple moving obstacle, use `--moving-obstacle START END X Y DX DY`;
 the obstacle occupies `(X, Y)` at `START` and then moves by `(DX, DY)` cells
 per frame through `END`.
+For a conservative footprint and prediction-aware Space-Time A* cost, add a
+radius, uncertainty growth, and a soft risk band:
+
+```bash
+./build/apps/dynamic_navigation_pipeline_cli \
+    --scenario autoplanner/data/configs/navigation_pipeline.yaml \
+    --planner space_time_astar --prediction-horizon 80 \
+    --prediction-risk-weight 2.0 --prediction-risk-clearance 1.5 \
+    --moving-obstacle 1 20 3 10 1 0 \
+    --moving-obstacle-radius 0.5 \
+    --moving-obstacle-uncertainty-growth 0.05 \
+    --output-dir autoplanner/results/robotnav-risk-aware
+```
+
+The hard collision envelope remains authoritative; the risk band adds cost to
+otherwise feasible cells that pass too close to the predicted obstacle. The
+same parameters are available from `benchmark_local_planners.py`.
 For prediction-aware planning, set the dynamic C++ planner to
 `space_time_astar`; it plans in `(x, y, t)` and treats the moving obstacle
 model as future occupancy:

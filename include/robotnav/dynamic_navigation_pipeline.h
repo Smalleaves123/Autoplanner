@@ -76,6 +76,8 @@ struct DynamicPipelineMetrics {
     double max_control_jump = 0.0;
     double mean_control_jump = 0.0;
     double minimum_dynamic_obstacle_clearance = 0.0;
+    double prediction_risk_weight = 0.0;
+    double prediction_risk_clearance = 0.0;
     double goal_distance = 0.0;
     bool goal_reached = false;
     bool safe_stop = false;

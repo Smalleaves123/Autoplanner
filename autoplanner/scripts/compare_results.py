@@ -162,6 +162,43 @@ def dynamic_report(rows: list[dict]) -> list[str]:
                           "Frames complete %"], table)]
 
 
+def local_planner_report(rows: list[dict], dynamic: bool = False) -> list[str]:
+    """Summarize the local-planner benchmark when present."""
+    if not rows:
+        return []
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[(row.get("controller", "unknown"),
+                 row.get("local_planner", "unknown"))].append(row)
+
+    table = []
+    for (controller, planner), group in sorted(grouped.items()):
+        success_rate = 100.0 * sum(
+            as_bool(row.get("success")) for row in group) / len(group)
+        goal_rate = 100.0 * sum(
+            as_bool(row.get("goal_reached")) for row in group) / len(group)
+        steps_key = "steps" if dynamic else "controller_trace_steps"
+        time_key = ("total_dstar_replanning_time_ms"
+                    if dynamic else "planning_time_ms")
+        table.append([
+            controller,
+            planner,
+            len(group),
+            f"{success_rate:.1f}%",
+            f"{goal_rate:.1f}%",
+            f"{mean(group, steps_key):.1f}",
+            f"{mean(group, 'local_planner_rollouts'):.1f}",
+            f"{mean(group, time_key):.4f}",
+        ])
+
+    title = "Dynamic local-planner benchmark" if dynamic \
+        else "Local-planner benchmark"
+    return ["", f"=== {title} ===", "",
+            format_table(["Controller", "Local planner", "Runs", "Success %",
+                          "Goal %", "Mean steps", "Mean rollouts",
+                          "Mean time ms"], table)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare RobotNav benchmark CSVs")
     parser.add_argument(
@@ -178,15 +215,32 @@ def main() -> int:
         planning_path = root / "planning_results.csv"
         tracking_path = root / "tracking_results.csv"
         dynamic_path = root / "dynamic_replanning_results.csv"
+        local_planner_path = root / "local_planner_results.csv"
+        dynamic_local_planner_path = root / "dynamic_local_planner_results.csv"
     else:
         planning_path = root
         tracking_path = Path(args.tracking_csv) if args.tracking_csv else None
         dynamic_path = Path(args.dynamic_csv) if args.dynamic_csv else None
+        local_planner_path = None
+        dynamic_local_planner_path = None
 
     lines = ["=" * 100, "ROBOTNAV BENCHMARK SUMMARY", "=" * 100]
-    lines += planning_report(load_rows(planning_path))
-    lines += tracking_report(load_rows(tracking_path) if tracking_path else [])
-    lines += dynamic_report(load_rows(dynamic_path) if dynamic_path else [])
+    lines += planning_report(load_rows(planning_path)
+                             if planning_path and planning_path.exists() else [])
+    lines += tracking_report(
+        load_rows(tracking_path)
+        if tracking_path and tracking_path.exists() else [])
+    lines += dynamic_report(
+        load_rows(dynamic_path)
+        if dynamic_path and dynamic_path.exists() else [])
+    lines += local_planner_report(
+        load_rows(local_planner_path)
+        if local_planner_path and local_planner_path.exists() else [])
+    lines += local_planner_report(
+        load_rows(dynamic_local_planner_path)
+        if dynamic_local_planner_path and dynamic_local_planner_path.exists()
+        else [],
+        dynamic=True)
     lines += ["", "=" * 100]
     report = "\n".join(lines)
     print(report)
