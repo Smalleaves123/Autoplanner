@@ -254,6 +254,10 @@ python autoplanner/scripts/compare_results.py \
 The output keeps each C++ pipeline artifact and records goal reach, safe-stop,
 rollout, collision-rejection, and dynamic-clearance metrics in CSV form.
 
+The metrics also separate local-planner compute time from global planning time.
+MPPI evaluates deterministic pre-generated samples and uses optional OpenMP
+parallelism when available.
+
 Dynamic predictions can include a conservative obstacle footprint and growing
 uncertainty. `--prediction-risk-weight` and
 `--prediction-risk-clearance` add a soft cost band to Space-Time A* while

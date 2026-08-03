@@ -773,9 +773,14 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
 #endif
             }
             if (dwa) {
+                const auto local_planner_begin = std::chrono::steady_clock::now();
                 const auto decision = dwa->computeCommand(
                     state, simulator.steering(), trajectory, command,
                     dynamic_context);
+                result.metrics.local_planner_time_ms +=
+                    std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - local_planner_begin)
+                        .count();
                 result.metrics.dynamic_local_collision_rejections +=
                     decision.dynamic_collision_rejections;
                 if (std::isfinite(decision.minimum_dynamic_clearance)) {
@@ -802,9 +807,14 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 }
                 command = decision.command;
             } else if (mppi) {
+                const auto local_planner_begin = std::chrono::steady_clock::now();
                 const auto decision = mppi->computeCommand(
                     state, simulator.steering(), trajectory, command,
                     dynamic_context);
+                result.metrics.local_planner_time_ms +=
+                    std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - local_planner_begin)
+                        .count();
                 result.metrics.dynamic_local_collision_rejections +=
                     decision.dynamic_collision_rejections;
                 result.metrics.local_planner_rollouts +=
@@ -984,6 +994,8 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     writeJsonNumber(output, result.metrics.total_dstar_replanning_time_ms);
     output << ",\n  \"total_astar_replanning_time_ms\": ";
     writeJsonNumber(output, result.metrics.total_astar_replanning_time_ms);
+    output << ",\n  \"local_planner_time_ms\": ";
+    writeJsonNumber(output, result.metrics.local_planner_time_ms);
     output << ",\n  \"max_control_jump\": ";
     writeJsonNumber(output, result.metrics.max_control_jump);
     output << ",\n  \"mean_control_jump\": ";

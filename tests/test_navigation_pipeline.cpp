@@ -349,6 +349,7 @@ TEST(NavigationPipelineTest, SupportsMppiLocalPlanner) {
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_EQ(result.metrics.local_planner, "mppi");
     EXPECT_GT(result.metrics.local_planner_rollouts, 0u);
+    EXPECT_GT(result.metrics.local_planner_time_ms, 0.0);
 }
 
 TEST(NavigationPipelineTest, SupportsCurvatureConstrainedSmoothing) {
@@ -524,6 +525,7 @@ TEST(DynamicNavigationPipelineTest, SupportsMppiWithMovingObstacles) {
     EXPECT_EQ(result.metrics.local_planner, "mppi");
     EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
     EXPECT_GT(result.metrics.local_planner_rollouts, 0u);
+    EXPECT_GT(result.metrics.local_planner_time_ms, 0.0);
     EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_FALSE(result.metrics.safe_stop);

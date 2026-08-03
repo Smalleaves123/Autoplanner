@@ -29,6 +29,7 @@ struct PipelineMetrics {
     std::size_t local_planner_adjustments = 0;
     std::size_t local_planner_rollouts = 0;
     std::size_t local_planner_collision_rejections = 0;
+    double local_planner_time_ms = 0.0;
     double minimum_dynamic_obstacle_clearance = 0.0;
     bool collision_free = false;
     bool goal_reached = false;

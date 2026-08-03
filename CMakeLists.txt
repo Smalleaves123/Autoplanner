@@ -53,6 +53,14 @@ target_include_directories(robotnav_pipeline PUBLIC
 target_link_libraries(robotnav_pipeline PUBLIC autoplanner autompc)
 target_compile_options(robotnav_pipeline PRIVATE -Wall -Wextra -Wpedantic)
 
+# MPPI rollouts are independent. Use OpenMP when it is available, while
+# keeping the default build portable on machines without an OpenMP runtime.
+find_package(OpenMP QUIET)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(robotnav_pipeline PUBLIC OpenMP::OpenMP_CXX)
+    target_compile_definitions(robotnav_pipeline PRIVATE ROBOTNAV_HAS_OPENMP=1)
+endif()
+
 install(TARGETS robotnav_pipeline
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

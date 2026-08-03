@@ -1,6 +1,7 @@
 #include "robotnav/navigation_pipeline.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -387,8 +388,13 @@ PipelineResult NavigationPipeline::run(
         }
 
         if (dwa) {
+            const auto local_planner_begin = std::chrono::steady_clock::now();
             const auto decision = dwa->computeCommand(
                 state, simulator.steering(), result.trajectory, command);
+            result.metrics.local_planner_time_ms +=
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - local_planner_begin)
+                    .count();
             if (!decision.feasible) {
                 result.metrics.safe_stop = true;
                 return fail(StatusCode::ControllerInfeasible,
@@ -414,8 +420,13 @@ PipelineResult NavigationPipeline::run(
                 }
             }
         } else if (mppi) {
+            const auto local_planner_begin = std::chrono::steady_clock::now();
             const auto decision = mppi->computeCommand(
                 state, simulator.steering(), result.trajectory, command);
+            result.metrics.local_planner_time_ms +=
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - local_planner_begin)
+                    .count();
             result.metrics.local_planner_rollouts +=
                 decision.feasible_rollouts;
             result.metrics.local_planner_collision_rejections +=
@@ -532,6 +543,9 @@ bool savePipelineMetricsJson(const PipelineResult& result,
            << result.metrics.local_planner_rollouts << ",\n"
            << "  \"local_planner_collision_rejections\": "
            << result.metrics.local_planner_collision_rejections << ",\n"
+           << "  \"local_planner_time_ms\": ";
+    writeJsonNumber(output, result.metrics.local_planner_time_ms);
+    output << ",\n"
            << "  \"minimum_dynamic_obstacle_clearance\": ";
     writeJsonNumber(output, result.metrics.minimum_dynamic_obstacle_clearance);
     output << ",\n"

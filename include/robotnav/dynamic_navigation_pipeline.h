@@ -73,6 +73,7 @@ struct DynamicPipelineMetrics {
     double total_space_time_planning_time_ms = 0.0;
     double total_dstar_replanning_time_ms = 0.0;
     double total_astar_replanning_time_ms = 0.0;
+    double local_planner_time_ms = 0.0;
     double max_control_jump = 0.0;
     double mean_control_jump = 0.0;
     double minimum_dynamic_obstacle_clearance = 0.0;

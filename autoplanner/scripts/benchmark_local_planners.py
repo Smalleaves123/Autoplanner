@@ -225,6 +225,7 @@ def static_row(
         "local_planner_rollouts": integer(metrics, "local_planner_rollouts"),
         "local_planner_collision_rejections": integer(
             metrics, "local_planner_collision_rejections"),
+        "local_planner_time_ms": number(metrics, "local_planner_time_ms"),
         "minimum_dynamic_obstacle_clearance": number(
             metrics, "minimum_dynamic_obstacle_clearance"),
         "mean_cross_track_error": number(metrics, "mean_cross_track_error"),
@@ -265,6 +266,7 @@ def dynamic_row(
         "local_planner_rollouts": integer(metrics, "local_planner_rollouts"),
         "dynamic_local_collision_rejections": integer(
             metrics, "dynamic_local_collision_rejections"),
+        "local_planner_time_ms": number(metrics, "local_planner_time_ms"),
         "moving_obstacle_update_count": integer(
             metrics, "moving_obstacle_update_count"),
         "moving_obstacle_conflict_count": integer(
@@ -319,9 +321,9 @@ def report(rows: list[dict], dynamic: bool = False) -> str:
         "mode: dynamic" if dynamic else "mode: static",
         "",
         "controller  local_planner  runs  success  goal_reached  "
-        "mean_steps  mean_rollouts  mean_clearance",
+        "mean_steps  mean_rollouts  local_ms  mean_clearance",
         "----------  -------------  ----  -------  ------------  "
-        "----------  -------------  --------------",
+        "----------  -------------  --------  --------------",
     ]
     for (controller, planner), group in sorted(grouped.items()):
         success = 100.0 * sum(bool_value(row["success"]) for row in group) / len(group)
@@ -333,6 +335,7 @@ def report(rows: list[dict], dynamic: bool = False) -> str:
             f"{success:>6.1f}%  {reached:>11.1f}%  "
             f"{mean(group, step_key):>10.1f}  "
             f"{mean(group, 'local_planner_rollouts'):>13.1f}  "
+            f"{mean(group, 'local_planner_time_ms'):>8.3f}  "
             f"{mean(group, 'minimum_dynamic_obstacle_clearance'):>14.4f}"
         )
     return "\n".join(lines) + "\n"

@@ -41,6 +41,7 @@ class LocalPlannerBenchmarkTests(unittest.TestCase):
             "goal_reached": True,
             "controller_trace_steps": 100,
             "local_planner_rollouts": 3200,
+            "local_planner_time_ms": 1.25,
             "minimum_dynamic_obstacle_clearance": 0.8,
         }]
 
@@ -49,6 +50,7 @@ class LocalPlannerBenchmarkTests(unittest.TestCase):
         self.assertIn("stanley", report)
         self.assertIn("mppi", report)
         self.assertIn("100.0%", report)
+        self.assertIn("1.250", report)
 
 
 if __name__ == "__main__":

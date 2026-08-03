@@ -188,6 +188,10 @@ minimum predicted dynamic-obstacle clearance.
 The navigation pipeline applies collision-safe shortcut smoothing by default;
 pass `--smooth none` when the raw planner path is required.
 
+MPPI reports `local_planner_time_ms` separately from global planning time. Its
+rollout evaluator uses deterministic noise pre-generation and can use OpenMP
+when an OpenMP C++ runtime is available; builds without OpenMP remain supported.
+
 ## Python C++ Backend
 
 Python bindings are optional. Python handles orchestration and analysis while

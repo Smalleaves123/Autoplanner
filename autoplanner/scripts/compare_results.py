@@ -178,8 +178,7 @@ def local_planner_report(rows: list[dict], dynamic: bool = False) -> list[str]:
         goal_rate = 100.0 * sum(
             as_bool(row.get("goal_reached")) for row in group) / len(group)
         steps_key = "steps" if dynamic else "controller_trace_steps"
-        time_key = ("total_dstar_replanning_time_ms"
-                    if dynamic else "planning_time_ms")
+        time_key = "local_planner_time_ms"
         table.append([
             controller,
             planner,

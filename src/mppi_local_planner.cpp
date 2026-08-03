@@ -26,10 +26,11 @@ autompc::TrajectoryPoint closestReference(
     autompc::TrajectoryPoint best = trajectory.front();
     double best_distance = std::numeric_limits<double>::max();
     for (const auto& point : trajectory) {
-        const double distance = std::hypot(
-            point.x - state.x, point.y - state.y);
-        if (distance < best_distance) {
-            best_distance = distance;
+        const double dx = point.x - state.x;
+        const double dy = point.y - state.y;
+        const double squared_distance = dx * dx + dy * dy;
+        if (squared_distance < best_distance) {
+            best_distance = squared_distance;
             best = point;
         }
     }
@@ -181,12 +182,17 @@ MppiDecision MppiLocalPlanner::computeCommand(
                     simulation_options_.max_steering)};
 
     struct RolloutResult {
+        bool valid = false;
         double cost = 0.0;
         autompc::Control first_command;
+        std::size_t dynamic_collision_rejections = 0;
+        double minimum_dynamic_clearance =
+            std::numeric_limits<double>::infinity();
     };
-    std::vector<RolloutResult> valid_rollouts;
-    valid_rollouts.reserve(static_cast<std::size_t>(options_.rollouts));
-    autompc::Control best_first_command = nominal;
+
+    const auto rollout_count = static_cast<std::size_t>(options_.rollouts);
+    const auto horizon = static_cast<std::size_t>(options_.horizon);
+    std::vector<autompc::Control> sampled_controls(rollout_count * horizon);
     std::mt19937 generator(options_.random_seed);
     std::normal_distribution<double> velocity_distribution(
         0.0, options_.velocity_noise);
@@ -197,23 +203,39 @@ MppiDecision MppiLocalPlanner::computeCommand(
         std::max(options_.dynamic_obstacle_margin,
                  dynamic_context.collision_margin));
 
+    // Generate noise serially in the historical order. This keeps the
+    // sampled controls reproducible even when rollout evaluation is parallel.
+    for (std::size_t rollout = 0; rollout < rollout_count; ++rollout) {
+        for (std::size_t step = 0; step < horizon; ++step) {
+            const bool baseline = rollout == 0;
+            sampled_controls[rollout * horizon + step] = {
+                clampFinite(
+                    nominal.velocity +
+                        (baseline ? 0.0 : velocity_distribution(generator)),
+                    0.0, simulation_options_.max_velocity),
+                clampFinite(
+                    nominal.steering +
+                        (baseline ? 0.0 : steering_distribution(generator)),
+                    -simulation_options_.max_steering,
+                    simulation_options_.max_steering)};
+        }
+    }
+
+    std::vector<RolloutResult> rollout_results(rollout_count);
+#ifdef ROBOTNAV_HAS_OPENMP
+#pragma omp parallel for schedule(static)
+#endif
     for (int rollout = 0; rollout < options_.rollouts; ++rollout) {
+        auto& result = rollout_results[static_cast<std::size_t>(rollout)];
         autompc::State predicted = state;
         double predicted_steering = current_steering;
         autompc::Control previous = nominal;
-        RolloutResult result;
         bool valid = true;
         double elapsed_seconds = 0.0;
         for (int step = 0; step < options_.horizon; ++step) {
-            const bool baseline = rollout == 0;
-            const autompc::Control command{
-                clampFinite(nominal.velocity +
-                                (baseline ? 0.0 : velocity_distribution(generator)),
-                            0.0, simulation_options_.max_velocity),
-                clampFinite(nominal.steering +
-                                (baseline ? 0.0 : steering_distribution(generator)),
-                            -simulation_options_.max_steering,
-                            simulation_options_.max_steering)};
+            const autompc::Control command = sampled_controls[
+                static_cast<std::size_t>(rollout) * horizon +
+                static_cast<std::size_t>(step)];
             if (step == 0) result.first_command = command;
 
             const auto next = rolloutStep(
@@ -232,14 +254,14 @@ MppiDecision MppiLocalPlanner::computeCommand(
                     predicted, next, elapsed_seconds,
                     elapsed_seconds + prediction_dt, dynamic_context,
                     options_, candidate_clearance)) {
-                decision.minimum_dynamic_clearance = std::min(
-                    decision.minimum_dynamic_clearance, candidate_clearance);
+                result.minimum_dynamic_clearance = std::min(
+                    result.minimum_dynamic_clearance, candidate_clearance);
                 valid = false;
-                ++decision.dynamic_collision_rejections;
+                ++result.dynamic_collision_rejections;
                 break;
             }
-            decision.minimum_dynamic_clearance = std::min(
-                decision.minimum_dynamic_clearance, candidate_clearance);
+            result.minimum_dynamic_clearance = std::min(
+                result.minimum_dynamic_clearance, candidate_clearance);
 
             const auto reference = closestReference(trajectory, next);
             result.cost += options_.trajectory_weight *
@@ -280,7 +302,17 @@ MppiDecision MppiLocalPlanner::computeCommand(
                 predicted.y - terminal_reference.y), 1.0);
         result.cost += options_.heading_weight * 2.0 * normalizedSquared(
             normalizeAngle(terminal_reference.theta - predicted.theta), 1.0);
-        valid_rollouts.push_back(result);
+        result.valid = true;
+    }
+
+    autompc::Control best_first_command = nominal;
+    for (const auto& result : rollout_results) {
+        decision.dynamic_collision_rejections +=
+            result.dynamic_collision_rejections;
+        decision.minimum_dynamic_clearance = std::min(
+            decision.minimum_dynamic_clearance,
+            result.minimum_dynamic_clearance);
+        if (!result.valid) continue;
         ++decision.feasible_rollouts;
         if (result.cost < decision.score) {
             decision.score = result.cost;
@@ -288,12 +320,13 @@ MppiDecision MppiLocalPlanner::computeCommand(
         }
     }
 
-    if (valid_rollouts.empty()) return decision;
+    if (decision.feasible_rollouts == 0) return decision;
 
     const double minimum_cost = decision.score;
     double weight_sum = 0.0;
     autompc::Control weighted_command;
-    for (const auto& rollout : valid_rollouts) {
+    for (const auto& rollout : rollout_results) {
+        if (!rollout.valid) continue;
         const double exponent = -(rollout.cost - minimum_cost) /
                                 options_.temperature;
         const double weight = std::exp(std::max(-700.0, exponent));
