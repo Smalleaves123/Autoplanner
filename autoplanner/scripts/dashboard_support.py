@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from math import hypot
+from math import hypot, isfinite
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,16 @@ class MovingObstaclePrediction:
     y: int
     dx: int = 0
     dy: int = 0
+    radius: float = 0.0
+    uncertainty_growth_per_frame: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("radius", self.radius),
+            ("uncertainty_growth_per_frame", self.uncertainty_growth_per_frame),
+        ):
+            if not isfinite(value) or value < 0.0:
+                raise ValueError(f"prediction {name} must be finite and non-negative")
 
     def positions(self) -> list[tuple[int, int]]:
         if self.end_frame < self.start_frame:
@@ -33,6 +43,10 @@ class MovingObstaclePrediction:
     def cli_values(self) -> tuple[int, int, int, int, int, int]:
         return (self.start_frame, self.end_frame, self.x, self.y,
                 self.dx, self.dy)
+
+    def cli_safety_values(self) -> tuple[float, float]:
+        """Return optional C++ moving-obstacle footprint parameters."""
+        return self.radius, self.uncertainty_growth_per_frame
 
 
 @dataclass(frozen=True)
@@ -74,12 +88,20 @@ def decide_prediction_risk(prediction: MovingObstaclePrediction,
     responsible for path-specific collision checks and D* Lite replanning.
     """
     positions = prediction.positions()
-    minimum_clearance = min(
-        point_to_segment_distance(position, start, goal)
-        for position in positions
-    )
-    start_clearance = min(hypot(x - start[0], y - start[1])
-                          for x, y in positions)
+    effective_clearances = []
+    start_clearances = []
+    for frame, position in zip(
+            range(prediction.start_frame, prediction.end_frame + 1), positions):
+        uncertainty = prediction.uncertainty_growth_per_frame * (
+            frame - prediction.start_frame)
+        occupied_radius = prediction.radius + uncertainty
+        effective_clearances.append(
+            point_to_segment_distance(position, start, goal) - occupied_radius)
+        start_clearances.append(
+            hypot(position[0] - start[0], position[1] - start[1]) -
+            occupied_radius)
+    minimum_clearance = min(effective_clearances)
+    start_clearance = min(start_clearances)
     hard_clearance = max(robot_radius + 0.5, 1.0)
     if start_clearance <= hard_clearance:
         return RiskDecision(
@@ -93,14 +115,14 @@ def decide_prediction_risk(prediction: MovingObstaclePrediction,
             action="replan_slow",
             velocity_scale=0.55,
             minimum_clearance=minimum_clearance,
-            reason="predicted obstacle intersects the nominal safety corridor",
+            reason="predicted obstacle footprint intersects the nominal safety corridor",
         )
     if minimum_clearance <= 2.0 * hard_clearance:
         return RiskDecision(
             action="replan_slow",
             velocity_scale=0.75,
             minimum_clearance=minimum_clearance,
-            reason="predicted obstacle is close to the nominal safety corridor",
+            reason="predicted obstacle footprint is close to the nominal safety corridor",
         )
     return RiskDecision(
         action="monitor",

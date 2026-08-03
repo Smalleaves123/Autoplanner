@@ -95,7 +95,10 @@ metrics, and plot. Its point-and-click editor adds/removes occupancy cells or
 sets start/goal cells; saved YAML scenes contain the complete grid and remain
 portable across machines. Dynamic mode converts a predicted constant-velocity
 obstacle trajectory into a monitor, slower D* Lite replan, or pre-flight safe
-stop decision.
+stop decision. A prediction can also carry a moving-obstacle radius and
+per-frame uncertainty growth; the dashboard exposes these together with the
+Space-Time A* risk weight and clearance band. Existing six-field prediction
+scenes remain loadable with zero-valued safety extensions.
 
 Install the optional dashboard dependency once:
 
@@ -114,6 +117,8 @@ It opens at `http://localhost:8501`.
 Dashboard YAML scenes can be executed without the web UI. The zero-argument
 command runs a bundled dynamic prediction example and writes a CSV ledger with
 the decision, velocity scale, replanning count, safety result, and output path.
+Each run's `summary.json` also stores the prediction footprint, uncertainty,
+and risk parameters used to construct the C++ command.
 
 ```bash
 python autoplanner/scripts/run_saved_scenarios.py

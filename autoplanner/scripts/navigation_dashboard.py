@@ -94,6 +94,9 @@ def prediction_from_settings(settings: dict[str, Any]) -> MovingObstaclePredicti
         y=int(settings["prediction_y"]),
         dx=int(settings["prediction_dx"]),
         dy=int(settings["prediction_dy"]),
+        radius=float(settings.get("moving_obstacle_radius", 0.0)),
+        uncertainty_growth_per_frame=float(
+            settings.get("moving_obstacle_uncertainty_growth", 0.0)),
     )
 
 
@@ -194,6 +197,24 @@ def build_command(settings: dict[str, Any], output_dir: Path) -> list[str]:
                 "--moving-obstacle",
                 *(str(value) for value in prediction.cli_values()),
             ))
+            radius, uncertainty_growth = prediction.cli_safety_values()
+            if radius > 0.0:
+                command.extend(("--moving-obstacle-radius", str(radius)))
+            if uncertainty_growth > 0.0:
+                command.extend((
+                    "--moving-obstacle-uncertainty-growth",
+                    str(uncertainty_growth),
+                ))
+            if settings.get("prediction_risk_weight", 0.0) > 0.0:
+                command.extend((
+                    "--prediction-risk-weight",
+                    str(settings["prediction_risk_weight"]),
+                ))
+            if settings.get("prediction_risk_clearance", 0.0) > 0.0:
+                command.extend((
+                    "--prediction-risk-clearance",
+                    str(settings["prediction_risk_clearance"]),
+                ))
     return command
 
 
@@ -250,7 +271,9 @@ def scene_setting_values(settings: dict[str, Any]) -> dict[str, Any]:
         "engine", "planner", "controller", "smooth", "velocity",
         "robot_radius", "mpc_horizon", "start_x", "start_y", "goal_x",
         "goal_y", "frames", "steps_per_frame", "obstacle_ahead",
-        "auto_obstacles", "use_prediction",
+        "auto_obstacles", "use_prediction", "prediction_risk_weight",
+        "prediction_risk_clearance", "moving_obstacle_radius",
+        "moving_obstacle_uncertainty_growth",
     )
     return {key: settings[key] for key in keys if key in settings}
 
@@ -273,14 +296,24 @@ def apply_scene(scene: dict[str, Any], choices: dict[str, Path]) -> None:
     for key, value in scene["settings"].items():
         st.session_state[key] = value
     prediction = scene["prediction"]
+    st.session_state["use_prediction"] = prediction is not None
     if prediction is not None:
-        st.session_state["use_prediction"] = True
         st.session_state["prediction_start"] = prediction.start_frame
         st.session_state["prediction_end"] = prediction.end_frame
         st.session_state["prediction_x"] = prediction.x
         st.session_state["prediction_y"] = prediction.y
         st.session_state["prediction_dx"] = prediction.dx
         st.session_state["prediction_dy"] = prediction.dy
+        st.session_state["moving_obstacle_radius"] = prediction.radius
+        st.session_state[
+            "moving_obstacle_uncertainty_growth"
+        ] = prediction.uncertainty_growth_per_frame
+    else:
+        st.session_state["moving_obstacle_radius"] = 0.0
+        st.session_state["moving_obstacle_uncertainty_growth"] = 0.0
+    for key in ("prediction_risk_weight", "prediction_risk_clearance"):
+        if key not in scene["settings"]:
+            st.session_state[key] = 0.0
 
 
 def apply_editor_action(action: str, cell: tuple[int, int],
@@ -381,6 +414,10 @@ def main() -> None:
         "prediction_y": height // 2,
         "prediction_dx": 0,
         "prediction_dy": 1,
+        "moving_obstacle_radius": 0.0,
+        "moving_obstacle_uncertainty_growth": 0.0,
+        "prediction_risk_weight": 0.0,
+        "prediction_risk_clearance": 0.0,
     }
 
     if engine == "dynamic":
@@ -406,6 +443,27 @@ def main() -> None:
                 settings["prediction_y"] = st.number_input("Prediction y", 0, height - 1, height // 2, key="prediction_y")
                 settings["prediction_dx"] = st.number_input("Prediction Δx / frame", -3, 3, 0, key="prediction_dx")
                 settings["prediction_dy"] = st.number_input("Prediction Δy / frame", -3, 3, 1, key="prediction_dy")
+                settings["moving_obstacle_radius"] = st.number_input(
+                    "Moving obstacle radius", min_value=0.0, max_value=5.0,
+                    value=0.0, step=0.1, key="moving_obstacle_radius",
+                    help="Footprint radius in map cells; zero preserves the point-cell model.",
+                )
+                settings["moving_obstacle_uncertainty_growth"] = st.number_input(
+                    "Uncertainty growth / frame", min_value=0.0, max_value=2.0,
+                    value=0.0, step=0.05,
+                    key="moving_obstacle_uncertainty_growth",
+                    help="Additional predicted footprint radius added per frame.",
+                )
+                settings["prediction_risk_weight"] = st.number_input(
+                    "Prediction risk weight", min_value=0.0, max_value=20.0,
+                    value=0.0, step=0.1, key="prediction_risk_weight",
+                    help="Space-time A* penalty weight; zero disables soft risk cost.",
+                )
+                settings["prediction_risk_clearance"] = st.number_input(
+                    "Prediction risk clearance", min_value=0.0, max_value=10.0,
+                    value=0.0, step=0.1, key="prediction_risk_clearance",
+                    help="Distance in cells over which the soft risk cost applies.",
+                )
     else:
         with prediction_column:
             st.subheader("Dynamic obstacle mode")

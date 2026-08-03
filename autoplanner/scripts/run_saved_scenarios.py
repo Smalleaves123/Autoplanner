@@ -54,8 +54,12 @@ def builtin_scene() -> dict[str, Any]:
             "obstacle_ahead": 5,
             "auto_obstacles": False,
             "use_prediction": True,
+            "prediction_risk_weight": 1.0,
+            "prediction_risk_clearance": 3.0,
         },
-        "prediction": MovingObstaclePrediction(3, 15, 12, 12, 0, 1),
+        "prediction": MovingObstaclePrediction(
+            3, 15, 12, 12, 0, 1, radius=0.5,
+            uncertainty_growth_per_frame=0.05),
     }
 
 
@@ -108,12 +112,39 @@ def run_command(scene: dict[str, Any], output_dir: Path,
             command.append("--no-auto-obstacles")
         if decision is not None and decision.action == "replan_slow":
             command.extend(("--moving-obstacle", *(str(value) for value in prediction.cli_values())))
+            radius, uncertainty_growth = prediction.cli_safety_values()
+            if radius > 0.0:
+                command.extend(("--moving-obstacle-radius", str(radius)))
+            if uncertainty_growth > 0.0:
+                command.extend((
+                    "--moving-obstacle-uncertainty-growth",
+                    str(uncertainty_growth),
+                ))
+            if float(settings.get("prediction_risk_weight", 0.0)) > 0.0:
+                command.extend((
+                    "--prediction-risk-weight",
+                    str(float(settings["prediction_risk_weight"])),
+                ))
+            if float(settings.get("prediction_risk_clearance", 0.0)) > 0.0:
+                command.extend((
+                    "--prediction-risk-clearance",
+                    str(float(settings["prediction_risk_clearance"])),
+                ))
+    radius, uncertainty_growth = (
+        prediction.cli_safety_values() if prediction is not None else (0.0, 0.0)
+    )
+    risk_weight = float(settings.get("prediction_risk_weight", 0.0))
+    risk_clearance = float(settings.get("prediction_risk_clearance", 0.0))
     metadata = {
         "decision": decision.action if decision else "not_applicable",
         "decision_reason": decision.reason if decision else "no dynamic prediction",
         "minimum_clearance": decision.minimum_clearance if decision else None,
         "velocity_scale": velocity_scale,
         "effective_frames": effective_frames,
+        "moving_obstacle_radius": radius,
+        "moving_obstacle_uncertainty_growth": uncertainty_growth,
+        "prediction_risk_weight": risk_weight,
+        "prediction_risk_clearance": risk_clearance,
     }
     return command, metadata
 
@@ -132,7 +163,9 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
     fields = (
         "scenario", "repeat", "return_code", "decision", "velocity_scale",
         "effective_frames", "goal_reached", "safe_stop", "replanning_count",
-        "collision_steps", "minimum_clearance", "output_dir",
+        "collision_steps", "minimum_clearance", "moving_obstacle_radius",
+        "moving_obstacle_uncertainty_growth", "prediction_risk_weight",
+        "prediction_risk_clearance", "output_dir",
     )
     with path.open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
@@ -183,6 +216,11 @@ def main() -> int:
                 completed = subprocess.run(
                     command, cwd=REPO_ROOT, text=True, capture_output=True)
                 metrics = summary_metrics(output_dir)
+            summary_path = output_dir / "summary.json"
+            if summary_path.exists():
+                summary = json.loads(summary_path.read_text())
+                summary["scenario"] = metadata
+                summary_path.write_text(json.dumps(summary, indent=2) + "\n")
             row = {
                 "scenario": scene["name"],
                 "repeat": repeat,
