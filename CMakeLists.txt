@@ -115,6 +115,7 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
         function(robotnav_add_python_test name source)
             add_test(NAME ${name}
                      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/${source}
+                             ${ARGN}
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
             set_tests_properties(${name} PROPERTIES
                                  LABELS "python"
@@ -125,6 +126,21 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  autoplanner/tests/test_perception_mapping.py)
         robotnav_add_python_test(test_python_local_planner_benchmark
                                  autoplanner/tests/test_local_planner_benchmark.py)
+        robotnav_add_python_test(
+            test_python_perception_replay
+            autoplanner/scripts/run_perception_pipeline.py
+            --map ${CMAKE_SOURCE_DIR}/autoplanner/data/maps/simple_50x50.txt
+            --start 1 1
+            --goal 12 12
+            --frames 6
+            --dynamic-obstacle moving 7 4.5 0 0.5 0.6
+            --cpp-build-dir ${CMAKE_BINARY_DIR}
+            --cpp-planner space_time_astar
+            --cpp-local-planner none
+            --output-dir ${CMAKE_BINARY_DIR}/perception-replay)
+        set_tests_properties(test_python_perception_replay PROPERTIES
+                             LABELS "python;integration"
+                             TIMEOUT 120)
 
         execute_process(
             COMMAND ${Python3_EXECUTABLE} -c
