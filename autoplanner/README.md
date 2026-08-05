@@ -258,9 +258,10 @@ The metrics also separate local-planner compute time from global planning time.
 MPPI evaluates deterministic pre-generated samples and uses optional OpenMP
 parallelism when available.
 
-Dynamic predictions can include a conservative obstacle footprint and growing
-uncertainty. `--prediction-risk-weight` and
-`--prediction-risk-clearance` add a soft cost band to Space-Time A* while
+Dynamic predictions can include constant acceleration, a conservative obstacle
+footprint, and a growing 2D covariance envelope. The same safety radius is
+used by Space-Time A*, DWA, MPPI, and the dynamic supervisor. `--prediction-risk-weight`
+and `--prediction-risk-clearance` add a soft cost band to Space-Time A* while
 hard collision rejection remains unchanged.
 
 ### Run Tests

@@ -143,7 +143,7 @@ def static_command(
     output_dir: Path,
     args: argparse.Namespace,
 ) -> list[str]:
-    return [
+    command = [
         str(cli),
         "--scenario", str(scenario_file),
         "--map", str(map_path),
@@ -159,6 +159,7 @@ def static_command(
         "--output-dir", str(output_dir),
         *planner_args(local_planner, args),
     ]
+    return command
 
 
 def dynamic_command(
@@ -173,7 +174,7 @@ def dynamic_command(
     args: argparse.Namespace,
 ) -> list[str]:
     end_frame = max(3, args.frames // 3)
-    return [
+    command = [
         str(cli),
         "--scenario", str(scenario_file),
         "--map", str(map_path),
@@ -196,6 +197,27 @@ def dynamic_command(
         "--output-dir", str(output_dir),
         *planner_args(local_planner, args),
     ]
+    if args.moving_obstacle_acceleration != (0.0, 0.0):
+        command += [
+            "--moving-obstacle-acceleration",
+            *(str(value) for value in args.moving_obstacle_acceleration),
+        ]
+    if args.moving_obstacle_covariance != (0.0, 0.0, 0.0):
+        command += [
+            "--moving-obstacle-covariance",
+            *(str(value) for value in args.moving_obstacle_covariance),
+        ]
+    if args.moving_obstacle_covariance_growth != (0.0, 0.0, 0.0):
+        command += [
+            "--moving-obstacle-covariance-growth",
+            *(str(value) for value in args.moving_obstacle_covariance_growth),
+        ]
+    if args.moving_obstacle_confidence_scale != 2.0:
+        command += [
+            "--moving-obstacle-confidence-scale",
+            str(args.moving_obstacle_confidence_scale),
+        ]
+    return command
 
 
 def static_row(
@@ -384,6 +406,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--moving-obstacle-radius", type=float, default=0.0)
     parser.add_argument(
         "--moving-obstacle-uncertainty-growth", type=float, default=0.0)
+    parser.add_argument("--moving-obstacle-acceleration", nargs=2,
+                        type=float, default=(0.0, 0.0),
+                        metavar=("AX", "AY"))
+    parser.add_argument("--moving-obstacle-covariance", nargs=3,
+                        type=float, default=(0.0, 0.0, 0.0),
+                        metavar=("XX", "XY", "YY"))
+    parser.add_argument("--moving-obstacle-covariance-growth", nargs=3,
+                        type=float, default=(0.0, 0.0, 0.0),
+                        metavar=("XX", "XY", "YY"))
+    parser.add_argument("--moving-obstacle-confidence-scale",
+                        type=float, default=2.0)
     parser.add_argument("--prediction-risk-weight", type=float, default=0.0)
     parser.add_argument("--prediction-risk-clearance", type=float, default=0.0)
     return parser.parse_args()
@@ -479,6 +512,12 @@ def main() -> int:
             "moving_obstacle_radius": args.moving_obstacle_radius,
             "moving_obstacle_uncertainty_growth":
                 args.moving_obstacle_uncertainty_growth,
+            "moving_obstacle_acceleration": args.moving_obstacle_acceleration,
+            "moving_obstacle_covariance": args.moving_obstacle_covariance,
+            "moving_obstacle_covariance_growth":
+                args.moving_obstacle_covariance_growth,
+            "moving_obstacle_confidence_scale":
+                args.moving_obstacle_confidence_scale,
         },
         "files": [
             "local_planner_results.csv",

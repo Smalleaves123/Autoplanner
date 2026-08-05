@@ -116,6 +116,20 @@ def run_unified_pipeline(args, build_dir: Path, map_path: Path,
     ]
     if args.inflate:
         command.append("--inflate")
+    if args.max_curvature is not None:
+        command += ["--max-curvature", str(args.max_curvature)]
+    if args.min_turning_radius is not None:
+        command += ["--min-turning-radius", str(args.min_turning_radius)]
+    if args.kinematic_check:
+        command.append("--kinematic-check")
+    if args.turning_radius is not None:
+        command += ["--turning-radius", str(args.turning_radius)]
+    if args.no_reverse:
+        command.append("--no-reverse")
+    if args.reverse_penalty is not None:
+        command += ["--reverse-penalty", str(args.reverse_penalty)]
+    if args.collision_resolution is not None:
+        command += ["--collision-resolution", str(args.collision_resolution)]
     print("Running unified C++ navigation pipeline...")
     completed = subprocess.run(command, text=True)
     metrics_file = output_dir / "metrics.json"
@@ -180,6 +194,20 @@ def run_dynamic_pipeline(args, build_dir: Path, map_path: Path,
     ]
     if args.inflate:
         command.append("--inflate")
+    if args.max_curvature is not None:
+        command += ["--max-curvature", str(args.max_curvature)]
+    if args.min_turning_radius is not None:
+        command += ["--min-turning-radius", str(args.min_turning_radius)]
+    if args.kinematic_check:
+        command.append("--kinematic-check")
+    if args.turning_radius is not None:
+        command += ["--turning-radius", str(args.turning_radius)]
+    if args.no_reverse:
+        command.append("--no-reverse")
+    if args.reverse_penalty is not None:
+        command += ["--reverse-penalty", str(args.reverse_penalty)]
+    if args.collision_resolution is not None:
+        command += ["--collision-resolution", str(args.collision_resolution)]
     if args.no_diagonal:
         command.append("--no-diagonal")
     if args.no_auto_obstacles:
@@ -193,12 +221,24 @@ def run_dynamic_pipeline(args, build_dir: Path, map_path: Path,
             "--moving-obstacle", str(start), str(end), str(x), str(y),
             str(dx), str(dy),
         ]
-    if args.moving_obstacle_radius > 0.0:
+    if args.moving_obstacle_radius != 0.0:
         command += ["--moving-obstacle-radius",
                     str(args.moving_obstacle_radius)]
-    if args.moving_obstacle_uncertainty_growth > 0.0:
+    if args.moving_obstacle_uncertainty_growth != 0.0:
         command += ["--moving-obstacle-uncertainty-growth",
                     str(args.moving_obstacle_uncertainty_growth)]
+    if args.moving_obstacle_acceleration != (0.0, 0.0):
+        command += ["--moving-obstacle-acceleration",
+                    *(str(value) for value in args.moving_obstacle_acceleration)]
+    if args.moving_obstacle_covariance != (0.0, 0.0, 0.0):
+        command += ["--moving-obstacle-covariance",
+                    *(str(value) for value in args.moving_obstacle_covariance)]
+    if args.moving_obstacle_covariance_growth != (0.0, 0.0, 0.0):
+        command += ["--moving-obstacle-covariance-growth",
+                    *(str(value) for value in args.moving_obstacle_covariance_growth)]
+    if args.moving_obstacle_confidence_scale != 2.0:
+        command += ["--moving-obstacle-confidence-scale",
+                    str(args.moving_obstacle_confidence_scale)]
     if args.prediction_risk_weight > 0.0:
         command += ["--prediction-risk-weight",
                     str(args.prediction_risk_weight)]
@@ -272,6 +312,13 @@ def main() -> int:
     parser.add_argument("--weight", type=float, default=1.5)
     parser.add_argument("--smooth", choices=("none", "shortcut"), default="shortcut")
     parser.add_argument("--smooth-iterations", type=int, default=100)
+    parser.add_argument("--max-curvature", type=float, default=None)
+    parser.add_argument("--min-turning-radius", type=float, default=None)
+    parser.add_argument("--kinematic-check", action="store_true", default=False)
+    parser.add_argument("--turning-radius", type=float, default=None)
+    parser.add_argument("--no-reverse", action="store_true", default=False)
+    parser.add_argument("--reverse-penalty", type=float, default=None)
+    parser.add_argument("--collision-resolution", type=float, default=None)
     parser.add_argument("--frames", type=int, default=20,
                         help="dynamic pipeline update frames")
     parser.add_argument("--steps-per-frame", type=int, default=40,
@@ -291,6 +338,17 @@ def main() -> int:
     parser.add_argument("--moving-obstacle-radius", type=float, default=0.0)
     parser.add_argument("--moving-obstacle-uncertainty-growth",
                         type=float, default=0.0)
+    parser.add_argument("--moving-obstacle-acceleration", nargs=2,
+                        type=float, default=(0.0, 0.0),
+                        metavar=("AX", "AY"))
+    parser.add_argument("--moving-obstacle-covariance", nargs=3,
+                        type=float, default=(0.0, 0.0, 0.0),
+                        metavar=("XX", "XY", "YY"))
+    parser.add_argument("--moving-obstacle-covariance-growth", nargs=3,
+                        type=float, default=(0.0, 0.0, 0.0),
+                        metavar=("XX", "XY", "YY"))
+    parser.add_argument("--moving-obstacle-confidence-scale",
+                        type=float, default=2.0)
     parser.add_argument("--prediction-risk-weight", type=float, default=0.0)
     parser.add_argument("--prediction-risk-clearance", type=float, default=0.0)
     parser.add_argument("--plot", action="store_true", default=False,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from math import hypot, isfinite
+from math import hypot, isfinite, sqrt
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,7 @@ import yaml
 
 @dataclass(frozen=True)
 class MovingObstaclePrediction:
-    """A constant-velocity obstacle forecast expressed in grid cells."""
+    """A kinematic obstacle forecast with a conservative covariance envelope."""
 
     start_frame: int
     end_frame: int
@@ -22,21 +22,80 @@ class MovingObstaclePrediction:
     dy: int = 0
     radius: float = 0.0
     uncertainty_growth_per_frame: float = 0.0
+    acceleration_x_per_frame2: float = 0.0
+    acceleration_y_per_frame2: float = 0.0
+    covariance_xx: float = 0.0
+    covariance_xy: float = 0.0
+    covariance_yy: float = 0.0
+    covariance_growth_xx_per_frame: float = 0.0
+    covariance_growth_xy_per_frame: float = 0.0
+    covariance_growth_yy_per_frame: float = 0.0
+    covariance_confidence_scale: float = 2.0
 
     def __post_init__(self) -> None:
         for name, value in (
             ("radius", self.radius),
             ("uncertainty_growth_per_frame", self.uncertainty_growth_per_frame),
+            ("acceleration_x_per_frame2", self.acceleration_x_per_frame2),
+            ("acceleration_y_per_frame2", self.acceleration_y_per_frame2),
+            ("covariance_xx", self.covariance_xx),
+            ("covariance_xy", self.covariance_xy),
+            ("covariance_yy", self.covariance_yy),
+            ("covariance_growth_xx_per_frame",
+             self.covariance_growth_xx_per_frame),
+            ("covariance_growth_xy_per_frame",
+             self.covariance_growth_xy_per_frame),
+            ("covariance_growth_yy_per_frame",
+             self.covariance_growth_yy_per_frame),
+            ("covariance_confidence_scale", self.covariance_confidence_scale),
         ):
-            if not isfinite(value) or value < 0.0:
-                raise ValueError(f"prediction {name} must be finite and non-negative")
+            if not isfinite(value) or (
+                    name not in {"acceleration_x_per_frame2",
+                                 "acceleration_y_per_frame2",
+                                 "covariance_xy",
+                                 "covariance_growth_xy_per_frame"} and
+                    value < 0.0):
+                raise ValueError(f"prediction {name} must be finite and valid")
+        if not self._is_positive_semidefinite(
+                self.covariance_xx, self.covariance_xy, self.covariance_yy):
+            raise ValueError("prediction covariance must be positive semidefinite")
+        if not self._is_positive_semidefinite(
+                self.covariance_growth_xx_per_frame,
+                self.covariance_growth_xy_per_frame,
+                self.covariance_growth_yy_per_frame):
+            raise ValueError(
+                "prediction covariance growth must be positive semidefinite")
 
-    def positions(self) -> list[tuple[int, int]]:
+    @staticmethod
+    def _is_positive_semidefinite(xx: float, xy: float, yy: float) -> bool:
+        return xx >= 0.0 and yy >= 0.0 and xx * yy - xy * xy >= 0.0
+
+    def covariance_standard_deviation(self, frame: float) -> float:
+        delta = frame - self.start_frame
+        xx = self.covariance_xx + self.covariance_growth_xx_per_frame * delta
+        xy = self.covariance_xy + self.covariance_growth_xy_per_frame * delta
+        yy = self.covariance_yy + self.covariance_growth_yy_per_frame * delta
+        if not self._is_positive_semidefinite(xx, xy, yy):
+            return float("inf")
+        largest_eigenvalue = (xx + yy) / 2.0 + hypot((xx - yy) / 2.0, xy)
+        return sqrt(max(0.0, largest_eigenvalue))
+
+    def safety_radius_at_frame(self, frame: float) -> float:
+        delta = max(0.0, frame - self.start_frame)
+        return (self.radius + self.uncertainty_growth_per_frame * delta +
+                self.covariance_confidence_scale *
+                self.covariance_standard_deviation(frame))
+
+    def positions(self) -> list[tuple[float, float]]:
         if self.end_frame < self.start_frame:
             raise ValueError("prediction end frame must not precede its start frame")
         return [
-            (self.x + (frame - self.start_frame) * self.dx,
-             self.y + (frame - self.start_frame) * self.dy)
+            (self.x + (frame - self.start_frame) * self.dx +
+             0.5 * self.acceleration_x_per_frame2 *
+             (frame - self.start_frame) ** 2,
+             self.y + (frame - self.start_frame) * self.dy +
+             0.5 * self.acceleration_y_per_frame2 *
+             (frame - self.start_frame) ** 2)
             for frame in range(self.start_frame, self.end_frame + 1)
         ]
 
@@ -47,6 +106,20 @@ class MovingObstaclePrediction:
     def cli_safety_values(self) -> tuple[float, float]:
         """Return optional C++ moving-obstacle footprint parameters."""
         return self.radius, self.uncertainty_growth_per_frame
+
+    def cli_model_values(self) -> tuple[float, ...]:
+        """Return optional C++ kinematics and covariance parameters."""
+        return (
+            self.acceleration_x_per_frame2,
+            self.acceleration_y_per_frame2,
+            self.covariance_xx,
+            self.covariance_xy,
+            self.covariance_yy,
+            self.covariance_growth_xx_per_frame,
+            self.covariance_growth_xy_per_frame,
+            self.covariance_growth_yy_per_frame,
+            self.covariance_confidence_scale,
+        )
 
 
 @dataclass(frozen=True)
@@ -92,9 +165,7 @@ def decide_prediction_risk(prediction: MovingObstaclePrediction,
     start_clearances = []
     for frame, position in zip(
             range(prediction.start_frame, prediction.end_frame + 1), positions):
-        uncertainty = prediction.uncertainty_growth_per_frame * (
-            frame - prediction.start_frame)
-        occupied_radius = prediction.radius + uncertainty
+        occupied_radius = prediction.safety_radius_at_frame(frame)
         effective_clearances.append(
             point_to_segment_distance(position, start, goal) - occupied_radius)
         start_clearances.append(

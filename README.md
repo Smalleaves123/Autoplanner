@@ -93,12 +93,13 @@ The ROS-free Streamlit dashboard selects maps, planners, controllers, start
 and goal cells, then runs the existing C++ pipeline and displays its trace,
 metrics, and plot. Its point-and-click editor adds/removes occupancy cells or
 sets start/goal cells; saved YAML scenes contain the complete grid and remain
-portable across machines. Dynamic mode converts a predicted constant-velocity
+portable across machines. Dynamic mode converts a predicted kinematic
 obstacle trajectory into a monitor, slower D* Lite replan, or pre-flight safe
-stop decision. A prediction can also carry a moving-obstacle radius and
-per-frame uncertainty growth; the dashboard exposes these together with the
-Space-Time A* risk weight and clearance band. Existing six-field prediction
-scenes remain loadable with zero-valued safety extensions.
+stop decision. A prediction can carry constant acceleration, a 2D position
+covariance with per-frame growth, a confidence scale, and a moving-obstacle
+radius. The dashboard exposes these together with the Space-Time A* risk
+weight and clearance band. Existing six-field prediction scenes remain
+loadable with zero-valued safety extensions.
 
 Install the optional dashboard dependency once:
 
@@ -223,9 +224,25 @@ PY
 ## Test
 
 ```bash
-cmake -S . -B build -DBUILD_TESTS=ON
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+cmake --preset test
+cmake --build --preset test
+ctest --preset test
+```
+
+The `test` preset builds the C++ tests and registers the standard-library
+Python regression tests with CTest. Dashboard tests are added automatically
+when PyYAML, Plotly, and Streamlit are installed. To use a minimal C++-only
+configuration, set `BUILD_PYTHON_TESTS=OFF`; to require all test dependencies,
+keep the default `ROBOTNAV_REQUIRE_TEST_DEPENDENCIES=ON` in the test preset.
+
+For an isolated manual build, use a dedicated binary directory rather than a
+shared `build` directory:
+
+```bash
+cmake -S . -B build/manual-test -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTS=ON -DBUILD_PYTHON_TESTS=ON
+cmake --build build/manual-test -j
+ctest --test-dir build/manual-test --output-on-failure
 ```
 
 For reproducible local configurations, use the CMake presets:
@@ -417,6 +434,22 @@ radius, uncertainty growth, and a soft risk band:
 The hard collision envelope remains authoritative; the risk band adds cost to
 otherwise feasible cells that pass too close to the predicted obstacle. The
 same parameters are available from `benchmark_local_planners.py`.
+
+For acceleration and covariance-aware prediction, append the following options
+to the same command:
+
+```bash
+    --moving-obstacle-acceleration 0.1 0.0 \
+    --moving-obstacle-covariance 0.25 0.0 0.25 \
+    --moving-obstacle-covariance-growth 0.05 0.0 0.05 \
+    --moving-obstacle-confidence-scale 2.0
+```
+
+The collision envelope shared by Space-Time A*, DWA, MPPI, and the dynamic
+state supervisor is `radius + linear_growth + confidence_scale *
+sqrt(lambda_max(covariance))`, with covariance evaluated at the queried frame.
+Covariance and covariance growth must be finite positive-semidefinite 2D
+matrices.
 For prediction-aware planning, set the dynamic C++ planner to
 `space_time_astar`; it plans in `(x, y, t)` and treats the moving obstacle
 model as future occupancy:
@@ -430,6 +463,29 @@ model as future occupancy:
     --moving-obstacle 1 3 3 10 1 0 \
     --output-dir autoplanner/results/robotnav-spacetime
 ```
+
+### Perception replay into the C++ dynamic pipeline
+
+The ROS-free perception runner can replay simulated, CSV, or JSON sensor
+frames, then export tracked obstacle motion as a stable CSV contract for the
+C++ dynamic pipeline. The bridge emits `frame,cell_x,cell_y,occupied` updates;
+real LiDAR adapters only need to produce the same `SensorFrame` interchange
+format.
+
+```bash
+python autoplanner/scripts/run_perception_pipeline.py \
+    --map autoplanner/data/maps/simple_50x50.txt \
+    --start 1 1 --goal 20 20 --frames 20 \
+    --dynamic-obstacle moving 7 4.5 0 0.5 0.6 \
+    --cpp-build-dir build --cpp-planner space_time_astar \
+    --cpp-local-planner dwa \
+    --output-dir autoplanner/results/perception_pipeline
+```
+
+The runner writes `cpp_dynamic_updates.csv` and, when `--cpp-build-dir` is
+provided, invokes `dynamic_navigation_pipeline_cli` and records its trace and
+metrics below `cpp_dynamic/`. Use `--sensor-csv` or `--sensor-json` to replay
+external sensor data instead of the built-in simulator.
 
 For externally driven updates, repeat `--obstacle FRAME X Y` (or use
 `--clear-obstacle FRAME X Y`) and disable the demo generator with

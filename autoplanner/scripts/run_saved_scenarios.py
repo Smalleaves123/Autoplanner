@@ -120,6 +120,31 @@ def run_command(scene: dict[str, Any], output_dir: Path,
                     "--moving-obstacle-uncertainty-growth",
                     str(uncertainty_growth),
                 ))
+            model_values = prediction.cli_model_values()
+            acceleration = model_values[0:2]
+            covariance = model_values[2:5]
+            covariance_growth = model_values[5:8]
+            confidence_scale = model_values[8]
+            if acceleration != (0.0, 0.0):
+                command.extend((
+                    "--moving-obstacle-acceleration",
+                    *(str(value) for value in acceleration),
+                ))
+            if covariance != (0.0, 0.0, 0.0):
+                command.extend((
+                    "--moving-obstacle-covariance",
+                    *(str(value) for value in covariance),
+                ))
+            if covariance_growth != (0.0, 0.0, 0.0):
+                command.extend((
+                    "--moving-obstacle-covariance-growth",
+                    *(str(value) for value in covariance_growth),
+                ))
+            if confidence_scale != 2.0:
+                command.extend((
+                    "--moving-obstacle-confidence-scale",
+                    str(confidence_scale),
+                ))
             if float(settings.get("prediction_risk_weight", 0.0)) > 0.0:
                 command.extend((
                     "--prediction-risk-weight",
@@ -133,6 +158,8 @@ def run_command(scene: dict[str, Any], output_dir: Path,
     radius, uncertainty_growth = (
         prediction.cli_safety_values() if prediction is not None else (0.0, 0.0)
     )
+    model_values = prediction.cli_model_values() if prediction is not None else (
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0)
     risk_weight = float(settings.get("prediction_risk_weight", 0.0))
     risk_clearance = float(settings.get("prediction_risk_clearance", 0.0))
     metadata = {
@@ -143,6 +170,10 @@ def run_command(scene: dict[str, Any], output_dir: Path,
         "effective_frames": effective_frames,
         "moving_obstacle_radius": radius,
         "moving_obstacle_uncertainty_growth": uncertainty_growth,
+        "moving_obstacle_acceleration": model_values[0:2],
+        "moving_obstacle_covariance": model_values[2:5],
+        "moving_obstacle_covariance_growth": model_values[5:8],
+        "moving_obstacle_confidence_scale": model_values[8],
         "prediction_risk_weight": risk_weight,
         "prediction_risk_clearance": risk_clearance,
     }

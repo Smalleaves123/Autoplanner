@@ -48,6 +48,22 @@ class DashboardSupportTests(unittest.TestCase):
             MovingObstaclePrediction(
                 1, 2, 7, 8, uncertainty_growth_per_frame=-0.01)
 
+    def test_prediction_supports_acceleration_and_covariance(self) -> None:
+        prediction = MovingObstaclePrediction(
+            0, 4, 1, 2, 1, 0,
+            acceleration_x_per_frame2=0.5,
+            covariance_xx=1.0,
+            covariance_yy=4.0,
+            covariance_growth_xx_per_frame=0.25,
+            covariance_confidence_scale=2.0,
+        )
+        self.assertEqual(prediction.positions()[2], (4.0, 2.0))
+        self.assertAlmostEqual(prediction.safety_radius_at_frame(2), 4.0)
+        with self.assertRaises(ValueError):
+            MovingObstaclePrediction(0, 1, 0, 0, covariance_xx=1.0,
+                                      covariance_xy=2.0,
+                                      covariance_yy=1.0)
+
     def test_risk_decision_includes_obstacle_footprint_and_uncertainty(self) -> None:
         start = (1, 1)
         goal = (20, 1)
@@ -110,7 +126,13 @@ prediction:
     def test_dashboard_command_forwards_prediction_safety_parameters(self) -> None:
         prediction = MovingObstaclePrediction(
             2, 5, 7, 8, 1, 0, radius=0.75,
-            uncertainty_growth_per_frame=0.1)
+            uncertainty_growth_per_frame=0.1,
+            acceleration_x_per_frame2=0.2,
+            covariance_xx=0.25,
+            covariance_yy=0.25,
+            covariance_growth_xx_per_frame=0.05,
+            covariance_growth_yy_per_frame=0.05,
+            covariance_confidence_scale=1.5)
         settings = {
             "engine": "dynamic",
             "map": Path("map.txt"),
@@ -140,6 +162,14 @@ prediction:
         self.assertIn("2.5", command)
         self.assertIn("--prediction-risk-clearance", command)
         self.assertIn("3.0", command)
+        self.assertIn("--moving-obstacle-acceleration", command)
+        self.assertIn("0.2", command)
+        self.assertIn("--moving-obstacle-covariance", command)
+        self.assertIn("0.25", command)
+        self.assertIn("--moving-obstacle-covariance-growth", command)
+        self.assertIn("0.05", command)
+        self.assertIn("--moving-obstacle-confidence-scale", command)
+        self.assertIn("1.5", command)
 
     def test_saved_scenario_command_forwards_prediction_safety_parameters(self) -> None:
         scene = {

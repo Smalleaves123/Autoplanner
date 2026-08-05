@@ -97,6 +97,21 @@ def prediction_from_settings(settings: dict[str, Any]) -> MovingObstaclePredicti
         radius=float(settings.get("moving_obstacle_radius", 0.0)),
         uncertainty_growth_per_frame=float(
             settings.get("moving_obstacle_uncertainty_growth", 0.0)),
+        acceleration_x_per_frame2=float(
+            settings.get("prediction_acceleration_x", 0.0)),
+        acceleration_y_per_frame2=float(
+            settings.get("prediction_acceleration_y", 0.0)),
+        covariance_xx=float(settings.get("prediction_covariance_xx", 0.0)),
+        covariance_xy=float(settings.get("prediction_covariance_xy", 0.0)),
+        covariance_yy=float(settings.get("prediction_covariance_yy", 0.0)),
+        covariance_growth_xx_per_frame=float(
+            settings.get("prediction_covariance_growth_xx", 0.0)),
+        covariance_growth_xy_per_frame=float(
+            settings.get("prediction_covariance_growth_xy", 0.0)),
+        covariance_growth_yy_per_frame=float(
+            settings.get("prediction_covariance_growth_yy", 0.0)),
+        covariance_confidence_scale=float(
+            settings.get("prediction_covariance_confidence_scale", 2.0)),
     )
 
 
@@ -205,6 +220,31 @@ def build_command(settings: dict[str, Any], output_dir: Path) -> list[str]:
                     "--moving-obstacle-uncertainty-growth",
                     str(uncertainty_growth),
                 ))
+            model_values = prediction.cli_model_values()
+            acceleration = model_values[0:2]
+            covariance = model_values[2:5]
+            covariance_growth = model_values[5:8]
+            confidence_scale = model_values[8]
+            if acceleration != (0.0, 0.0):
+                command.extend((
+                    "--moving-obstacle-acceleration",
+                    *(str(value) for value in acceleration),
+                ))
+            if covariance != (0.0, 0.0, 0.0):
+                command.extend((
+                    "--moving-obstacle-covariance",
+                    *(str(value) for value in covariance),
+                ))
+            if covariance_growth != (0.0, 0.0, 0.0):
+                command.extend((
+                    "--moving-obstacle-covariance-growth",
+                    *(str(value) for value in covariance_growth),
+                ))
+            if confidence_scale != 2.0:
+                command.extend((
+                    "--moving-obstacle-confidence-scale",
+                    str(confidence_scale),
+                ))
             if settings.get("prediction_risk_weight", 0.0) > 0.0:
                 command.extend((
                     "--prediction-risk-weight",
@@ -274,6 +314,11 @@ def scene_setting_values(settings: dict[str, Any]) -> dict[str, Any]:
         "auto_obstacles", "use_prediction", "prediction_risk_weight",
         "prediction_risk_clearance", "moving_obstacle_radius",
         "moving_obstacle_uncertainty_growth",
+        "prediction_acceleration_x", "prediction_acceleration_y",
+        "prediction_covariance_xx", "prediction_covariance_xy",
+        "prediction_covariance_yy", "prediction_covariance_growth_xx",
+        "prediction_covariance_growth_xy", "prediction_covariance_growth_yy",
+        "prediction_covariance_confidence_scale",
     )
     return {key: settings[key] for key in keys if key in settings}
 
@@ -308,9 +353,33 @@ def apply_scene(scene: dict[str, Any], choices: dict[str, Path]) -> None:
         st.session_state[
             "moving_obstacle_uncertainty_growth"
         ] = prediction.uncertainty_growth_per_frame
+        st.session_state["prediction_acceleration_x"] = (
+            prediction.acceleration_x_per_frame2)
+        st.session_state["prediction_acceleration_y"] = (
+            prediction.acceleration_y_per_frame2)
+        st.session_state["prediction_covariance_xx"] = prediction.covariance_xx
+        st.session_state["prediction_covariance_xy"] = prediction.covariance_xy
+        st.session_state["prediction_covariance_yy"] = prediction.covariance_yy
+        st.session_state["prediction_covariance_growth_xx"] = (
+            prediction.covariance_growth_xx_per_frame)
+        st.session_state["prediction_covariance_growth_xy"] = (
+            prediction.covariance_growth_xy_per_frame)
+        st.session_state["prediction_covariance_growth_yy"] = (
+            prediction.covariance_growth_yy_per_frame)
+        st.session_state["prediction_covariance_confidence_scale"] = (
+            prediction.covariance_confidence_scale)
     else:
         st.session_state["moving_obstacle_radius"] = 0.0
         st.session_state["moving_obstacle_uncertainty_growth"] = 0.0
+        st.session_state["prediction_acceleration_x"] = 0.0
+        st.session_state["prediction_acceleration_y"] = 0.0
+        st.session_state["prediction_covariance_xx"] = 0.0
+        st.session_state["prediction_covariance_xy"] = 0.0
+        st.session_state["prediction_covariance_yy"] = 0.0
+        st.session_state["prediction_covariance_growth_xx"] = 0.0
+        st.session_state["prediction_covariance_growth_xy"] = 0.0
+        st.session_state["prediction_covariance_growth_yy"] = 0.0
+        st.session_state["prediction_covariance_confidence_scale"] = 2.0
     for key in ("prediction_risk_weight", "prediction_risk_clearance"):
         if key not in scene["settings"]:
             st.session_state[key] = 0.0
@@ -416,6 +485,15 @@ def main() -> None:
         "prediction_dy": 1,
         "moving_obstacle_radius": 0.0,
         "moving_obstacle_uncertainty_growth": 0.0,
+        "prediction_acceleration_x": 0.0,
+        "prediction_acceleration_y": 0.0,
+        "prediction_covariance_xx": 0.0,
+        "prediction_covariance_xy": 0.0,
+        "prediction_covariance_yy": 0.0,
+        "prediction_covariance_growth_xx": 0.0,
+        "prediction_covariance_growth_xy": 0.0,
+        "prediction_covariance_growth_yy": 0.0,
+        "prediction_covariance_confidence_scale": 2.0,
         "prediction_risk_weight": 0.0,
         "prediction_risk_clearance": 0.0,
     }
@@ -423,7 +501,7 @@ def main() -> None:
     if engine == "dynamic":
         with prediction_column:
             st.subheader("Prediction and safety decision")
-            st.caption("A constant-velocity forecast is screened before the D* Lite dynamic pipeline runs.")
+            st.caption("A kinematic forecast with uncertainty is screened before the D* Lite dynamic pipeline runs.")
             settings["auto_obstacles"] = st.checkbox("Enable automatic path obstacle", True, key="auto_obstacles")
             settings["use_prediction"] = st.checkbox("Enable predicted moving obstacle", True, key="use_prediction")
             settings["frames"] = st.slider("Update frames", 2, 60, 20, key="frames")
@@ -443,6 +521,12 @@ def main() -> None:
                 settings["prediction_y"] = st.number_input("Prediction y", 0, height - 1, height // 2, key="prediction_y")
                 settings["prediction_dx"] = st.number_input("Prediction Δx / frame", -3, 3, 0, key="prediction_dx")
                 settings["prediction_dy"] = st.number_input("Prediction Δy / frame", -3, 3, 1, key="prediction_dy")
+                settings["prediction_acceleration_x"] = st.number_input(
+                    "Prediction acceleration x / frame²", -2.0, 2.0,
+                    0.0, step=0.05, key="prediction_acceleration_x")
+                settings["prediction_acceleration_y"] = st.number_input(
+                    "Prediction acceleration y / frame²", -2.0, 2.0,
+                    0.0, step=0.05, key="prediction_acceleration_y")
                 settings["moving_obstacle_radius"] = st.number_input(
                     "Moving obstacle radius", min_value=0.0, max_value=5.0,
                     value=0.0, step=0.1, key="moving_obstacle_radius",
@@ -454,6 +538,34 @@ def main() -> None:
                     key="moving_obstacle_uncertainty_growth",
                     help="Additional predicted footprint radius added per frame.",
                 )
+                covariance_column_a, covariance_column_b = st.columns(2)
+                with covariance_column_a:
+                    settings["prediction_covariance_xx"] = st.number_input(
+                        "Covariance xx", min_value=0.0, max_value=25.0,
+                        value=0.0, step=0.1, key="prediction_covariance_xx")
+                    settings["prediction_covariance_yy"] = st.number_input(
+                        "Covariance yy", min_value=0.0, max_value=25.0,
+                        value=0.0, step=0.1, key="prediction_covariance_yy")
+                    settings["prediction_covariance_growth_xx"] = st.number_input(
+                        "Covariance growth xx / frame", min_value=0.0,
+                        max_value=10.0, value=0.0, step=0.05,
+                        key="prediction_covariance_growth_xx")
+                    settings["prediction_covariance_growth_yy"] = st.number_input(
+                        "Covariance growth yy / frame", min_value=0.0,
+                        max_value=10.0, value=0.0, step=0.05,
+                        key="prediction_covariance_growth_yy")
+                with covariance_column_b:
+                    settings["prediction_covariance_xy"] = st.number_input(
+                        "Covariance xy", min_value=-25.0, max_value=25.0,
+                        value=0.0, step=0.1, key="prediction_covariance_xy")
+                    settings["prediction_covariance_growth_xy"] = st.number_input(
+                        "Covariance growth xy / frame", min_value=-10.0,
+                        max_value=10.0, value=0.0, step=0.05,
+                        key="prediction_covariance_growth_xy")
+                    settings["prediction_covariance_confidence_scale"] = st.number_input(
+                        "Covariance confidence scale", min_value=0.0,
+                        max_value=5.0, value=2.0, step=0.1,
+                        key="prediction_covariance_confidence_scale")
                 settings["prediction_risk_weight"] = st.number_input(
                     "Prediction risk weight", min_value=0.0, max_value=20.0,
                     value=0.0, step=0.1, key="prediction_risk_weight",
