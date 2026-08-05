@@ -18,6 +18,11 @@ struct PlannerResult {
     // The computed path as a sequence of world coordinates.
     Path2d path;
 
+    // Optional motion direction for each path point: -1 reverse, 1 forward,
+    // and 0 for an unspecified endpoint. Kinodynamic planners can preserve
+    // gear changes here; other planners leave this empty.
+    std::vector<int> motion_directions;
+
     // Computed Euclidean length of the path.
     double path_length = 0.0;
     double planning_time_ms = 0.0;

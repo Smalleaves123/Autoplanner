@@ -6,6 +6,41 @@
 
 namespace autompc {
 
+TrajectoryQuality assessTrajectory(const Trajectory& trajectory,
+                                   double max_curvature) {
+    TrajectoryQuality quality;
+    if (!std::isfinite(max_curvature) || max_curvature < 0.0) {
+        quality.finite = false;
+        quality.curvature_feasible = false;
+        return quality;
+    }
+    for (const auto& point : trajectory) {
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
+            !std::isfinite(point.theta) || !std::isfinite(point.v) ||
+            !std::isfinite(point.curvature) ||
+            !std::isfinite(point.acceleration)) {
+            quality.finite = false;
+            quality.curvature_feasible = false;
+            continue;
+        }
+        const double absolute_curvature = std::abs(point.curvature);
+        quality.max_abs_curvature = std::max(
+            quality.max_abs_curvature, absolute_curvature);
+        if (absolute_curvature > 1e-9) {
+            const double radius = 1.0 / absolute_curvature;
+            if (quality.minimum_turning_radius <= 0.0 ||
+                radius < quality.minimum_turning_radius) {
+                quality.minimum_turning_radius = radius;
+            }
+        }
+        if (max_curvature > 0.0 &&
+            absolute_curvature > max_curvature + 1e-9) {
+            quality.curvature_feasible = false;
+        }
+    }
+    return quality;
+}
+
 double closestPointDistance(const Trajectory& traj, const State& state) {
     double best = std::numeric_limits<double>::max();
     for (auto& p : traj) {

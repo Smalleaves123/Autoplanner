@@ -9,6 +9,19 @@ namespace autompc {
 
 using Trajectory = std::vector<TrajectoryPoint>;
 
+// Geometry and feasibility summary for a controller-ready trajectory.
+struct TrajectoryQuality {
+    bool finite = true;
+    bool curvature_feasible = true;
+    double max_abs_curvature = 0.0;
+    double minimum_turning_radius = 0.0;
+};
+
+// Assess continuous geometry against an optional curvature limit. A zero
+// limit disables the feasibility check while still reporting geometry.
+TrajectoryQuality assessTrajectory(const Trajectory& trajectory,
+                                   double max_curvature = 0.0);
+
 // Distance to the closest point on the trajectory.
 double closestPointDistance(const Trajectory& traj, const State& state);
 

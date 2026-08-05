@@ -81,3 +81,17 @@ TEST(KinematicBicycle, ResetClearsActuatorState) {
     EXPECT_DOUBLE_EQ(simulator.state().v, 0.5);
     EXPECT_DOUBLE_EQ(simulator.steering(), 0.0);
 }
+
+TEST(KinematicBicycle, SupportsBoundedReverseVelocityWhenEnabled) {
+    auto options = constrainedOptions();
+    options.allow_reverse = true;
+    options.max_reverse_velocity = 0.5;
+    KinematicBicycleSimulator simulator({0.0, 0.0, 0.0, 0.0}, options);
+
+    for (int index = 0; index < 10; ++index) {
+        simulator.step({-5.0, 0.0});
+    }
+
+    EXPECT_NEAR(simulator.state().v, -0.5, 1e-9);
+    EXPECT_LT(simulator.state().x, 0.0);
+}

@@ -17,7 +17,9 @@ void validateOptions(const SimulationOptions& options) {
             options.max_deceleration < 0.0 ||
         !std::isfinite(options.max_steering) || options.max_steering < 0.0 ||
         !std::isfinite(options.max_steering_rate) ||
-            options.max_steering_rate < 0.0) {
+            options.max_steering_rate < 0.0 ||
+        !std::isfinite(options.max_reverse_velocity) ||
+            options.max_reverse_velocity < 0.0) {
         throw std::invalid_argument("invalid kinematic bicycle simulation options");
     }
 }
@@ -37,12 +39,17 @@ KinematicBicycleSimulator::KinematicBicycleSimulator(
         !std::isfinite(state_.theta) || !std::isfinite(state_.v)) {
         throw std::invalid_argument("initial state must be finite");
     }
-    state_.v = clampFinite(state_.v, 0.0, options_.max_velocity);
+    const double minimum_velocity = options_.allow_reverse
+        ? -options_.max_reverse_velocity : 0.0;
+    state_.v = clampFinite(state_.v, minimum_velocity,
+                           options_.max_velocity);
 }
 
 State KinematicBicycleSimulator::step(const Control& command) {
+    const double minimum_velocity = options_.allow_reverse
+        ? -options_.max_reverse_velocity : 0.0;
     const double target_velocity =
-        clampFinite(command.velocity, 0.0, options_.max_velocity);
+        clampFinite(command.velocity, minimum_velocity, options_.max_velocity);
     const double velocity_delta = target_velocity - state_.v;
     const double acceleration_limit = velocity_delta >= 0.0
         ? options_.max_acceleration : options_.max_deceleration;
@@ -80,7 +87,10 @@ void KinematicBicycleSimulator::reset(const State& state) {
         throw std::invalid_argument("state must be finite");
     }
     state_ = state;
-    state_.v = clampFinite(state_.v, 0.0, options_.max_velocity);
+    const double minimum_velocity = options_.allow_reverse
+        ? -options_.max_reverse_velocity : 0.0;
+    state_.v = clampFinite(state_.v, minimum_velocity,
+                           options_.max_velocity);
     steering_ = 0.0;
 }
 

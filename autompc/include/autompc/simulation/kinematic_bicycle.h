@@ -15,6 +15,8 @@ struct SimulationOptions {
     double max_deceleration = 2.0;
     double max_steering = 0.7;
     double max_steering_rate = 1.5;
+    bool allow_reverse = false;
+    double max_reverse_velocity = 1.0;
 };
 
 class KinematicBicycleSimulator {

@@ -15,7 +15,10 @@ class HybridAStarPlanner final : public PlannerBase {
 public:
     HybridAStarPlanner(double turning_radius = 5.0,
                        double step_size = 1.0,
-                       int angle_bins = 72);
+                       int angle_bins = 72,
+                       bool allow_reverse = true,
+                       double reverse_penalty = 1.2,
+                       double collision_check_resolution = 0.25);
 
     void setHeuristic(std::unique_ptr<Heuristic> heuristic);
 
@@ -27,6 +30,9 @@ private:
     double turning_radius_;
     double step_size_;
     int angle_bins_;
+    bool allow_reverse_;
+    double reverse_penalty_;
+    double collision_check_resolution_;
     std::unique_ptr<Heuristic> heuristic_;
 };
 

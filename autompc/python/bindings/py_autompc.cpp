@@ -53,7 +53,10 @@ PYBIND11_MODULE(_autompc, m) {
         .def_readwrite("max_acceleration", &SimulationOptions::max_acceleration)
         .def_readwrite("max_deceleration", &SimulationOptions::max_deceleration)
         .def_readwrite("max_steering", &SimulationOptions::max_steering)
-        .def_readwrite("max_steering_rate", &SimulationOptions::max_steering_rate);
+        .def_readwrite("max_steering_rate", &SimulationOptions::max_steering_rate)
+        .def_readwrite("allow_reverse", &SimulationOptions::allow_reverse)
+        .def_readwrite("max_reverse_velocity",
+                       &SimulationOptions::max_reverse_velocity);
 
     py::class_<KinematicBicycleSimulator>(m, "KinematicBicycleSimulator")
         .def(py::init<const State&, SimulationOptions>(),
@@ -93,7 +96,11 @@ PYBIND11_MODULE(_autompc, m) {
         .def_readwrite("max_acceleration", &TrajectoryOptions::max_acceleration)
         .def_readwrite("max_deceleration", &TrajectoryOptions::max_deceleration)
         .def_readwrite("max_lateral_acceleration",
-                       &TrajectoryOptions::max_lateral_acceleration);
+                       &TrajectoryOptions::max_lateral_acceleration)
+        .def_readwrite("allow_reverse", &TrajectoryOptions::allow_reverse)
+        .def_readwrite("max_reverse_velocity",
+                       &TrajectoryOptions::max_reverse_velocity)
+        .def_readwrite("max_curvature", &TrajectoryOptions::max_curvature);
 
     py::class_<TrackingErrors>(m, "TrackingErrors")
         .def_readonly("max_cross_track", &TrackingErrors::max_cross_track)

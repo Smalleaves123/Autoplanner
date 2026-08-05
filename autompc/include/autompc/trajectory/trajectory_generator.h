@@ -24,12 +24,23 @@ struct TrajectoryOptions {
     double max_acceleration = 1.5;
     double max_deceleration = 2.0;
     double max_lateral_acceleration = 1.5;
+    bool allow_reverse = false;
+    double max_reverse_velocity = 1.0;
+    // Optional hard curvature limit in 1/metres. Zero leaves geometry
+    // unconstrained for compatibility with the legacy generator.
+    double max_curvature = 0.0;
 };
 
 // Convert a polyline into an equally spaced, curvature-aware trajectory.
 // The final point is stopped and the speed profile is limited by both
 // curvature and longitudinal acceleration/deceleration constraints.
 Trajectory generateTrajectory(const Waypoints& waypoints,
+                               const TrajectoryOptions& options = {});
+
+// Generate a trajectory with one motion direction per waypoint. Directions
+// are -1 for reverse, 1 for forward, and 0 for an unspecified endpoint.
+Trajectory generateTrajectory(const Waypoints& waypoints,
+                               const std::vector<int>& motion_directions,
                                const TrajectoryOptions& options = {});
 
 // Read an AutoPlanner x,y CSV and generate a controller-ready trajectory.

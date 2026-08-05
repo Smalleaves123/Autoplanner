@@ -77,7 +77,10 @@ std::unique_ptr<PlannerBase> createPlanner(
         return std::make_unique<HybridAStarPlanner>(
             options.turning_radius,
             options.step_size,
-            options.angle_bins);
+            options.angle_bins,
+            options.allow_reverse,
+            options.reverse_penalty,
+            options.collision_check_resolution);
     }
 
     return nullptr;

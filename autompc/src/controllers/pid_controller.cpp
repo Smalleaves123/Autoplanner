@@ -40,7 +40,9 @@ Control PIDController::compute(const State& state, const TrajectoryPoint& ref,
     double vel_deriv = (vel_err - prev_vel_err_) / std::max(dt, 1e-6);
     prev_vel_err_ = vel_err;
     double velocity = kp_vel_ * vel_err + ki_vel_ * integral_vel_ + kd_vel_ * vel_deriv;
-    velocity = std::max(0.0, ref.v + velocity);  // feedforward + correction, no reverse
+    // Preserve the reference gear. The safety supervisor applies the actual
+    // configured forward/reverse velocity limits at the execution boundary.
+    velocity = ref.v + velocity;
 
     // PID for steering
     integral_steer_ += steer_err * dt;
@@ -111,7 +113,7 @@ Control PurePursuitController::compute(const State& state,
         steering = std::atan2(2.0 * wheelbase_ * ly, L2);
 
     steering = std::max(-0.7, std::min(0.7, steering));
-    return {std::max(0.0, target_vel), steering};
+    return {target_vel, steering};
 }
 
 // ── Stanley Controller ──────────────────────────────────────────────────

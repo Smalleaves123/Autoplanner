@@ -28,6 +28,9 @@ struct PlannerFactoryOptions {
 
     double turning_radius = 5.0;
     int angle_bins = 72;
+    bool allow_reverse = true;
+    double reverse_penalty = 1.2;
+    double collision_check_resolution = 0.25;
 };
 
 // Create any supported planner using one stable name. Returns nullptr for an

@@ -66,3 +66,36 @@ TEST(HybridAStar, FindsPathOnOpenArea) {
     EXPECT_TRUE(result.success);
     EXPECT_GT(result.path_length, 0.0);
 }
+
+TEST(HybridAStar, SupportsFineCollisionSamplingAndNoReverse) {
+    auto map = loadMap("data/maps/simple_50x50.txt");
+    HybridAStarPlanner planner(5.0, 2.0, 36, false, 1.5, 0.1);
+
+    PlannerResult result = planner.plan(
+        *map, Point2i{5, 5}, Point2i{45, 45});
+
+    ASSERT_TRUE(result.success) << result.message;
+    ASSERT_FALSE(result.path.empty());
+    for (const auto& point : result.path) {
+        EXPECT_TRUE(map->isFree(static_cast<int>(std::floor(point.x)),
+                                static_cast<int>(std::floor(point.y))));
+    }
+}
+
+TEST(HybridAStar, ReportsDirectionsAndStopsNearTheGoal) {
+    auto map = loadMap("data/maps/simple_50x50.txt");
+    HybridAStarPlanner planner(3.0, 2.0, 36, true, 1.2, 0.1);
+
+    const Point2i goal{45, 45};
+    const PlannerResult result = planner.plan(*map, Point2i{5, 5}, goal);
+
+    ASSERT_TRUE(result.success) << result.message;
+    ASSERT_EQ(result.motion_directions.size(), result.path.size());
+    EXPECT_TRUE(std::all_of(result.motion_directions.begin(),
+                            result.motion_directions.end(),
+                            [](int direction) {
+                                return direction >= -1 && direction <= 1;
+                            }));
+    EXPECT_LE(std::hypot(result.path.back().x - goal.x,
+                         result.path.back().y - goal.y), 1.0 + 1e-9);
+}
