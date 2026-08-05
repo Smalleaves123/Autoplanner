@@ -85,6 +85,49 @@ void writeJsonNumber(std::ofstream& output, double value) {
     else output << "null";
 }
 
+double configuredMaxCurvature(const PipelineConfig& config) {
+    const double configured = config.trajectory_options.max_curvature;
+    if (!config.enforce_kinematic_constraints) return configured;
+    if (!std::isfinite(config.simulation_options.wheelbase) ||
+        config.simulation_options.wheelbase <= 0.0 ||
+        !std::isfinite(config.simulation_options.max_steering) ||
+        config.simulation_options.max_steering < 0.0) {
+        return -1.0;
+    }
+    const double vehicle_limit = std::tan(
+        config.simulation_options.max_steering) /
+        config.simulation_options.wheelbase;
+    if (!std::isfinite(vehicle_limit) || vehicle_limit <= 0.0) return -1.0;
+    return configured > 0.0 ? std::min(configured, vehicle_limit)
+                            : vehicle_limit;
+}
+
+bool containsReverseMotion(const std::vector<int>& directions) {
+    return std::any_of(directions.begin(), directions.end(),
+                       [](int direction) { return direction < 0; });
+}
+
+bool trajectoryIsCollisionFree(
+    const autompc::Trajectory& trajectory,
+    const autoplanner::CollisionChecker& collision_checker) {
+    if (trajectory.empty()) return false;
+    for (std::size_t index = 0; index < trajectory.size(); ++index) {
+        const auto& point = trajectory[index];
+        if (!collision_checker.isPoseValid({point.x, point.y, point.theta})) {
+            return false;
+        }
+        if (index > 0) {
+            const auto& previous = trajectory[index - 1];
+            if (!collision_checker.isPoseSegmentValid(
+                    {previous.x, previous.y, previous.theta},
+                    {point.x, point.y, point.theta})) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 PipelineResult NavigationPipeline::run(
@@ -118,6 +161,23 @@ PipelineResult NavigationPipeline::run(
     if (config.max_steps == 0 || config.simulation_options.dt <= 0.0) {
         return fail(StatusCode::InvalidConfiguration,
                     "pipeline step configuration is invalid");
+    }
+    if (!std::isfinite(config.trajectory_options.max_curvature) ||
+        config.trajectory_options.max_curvature < 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "trajectory curvature limit is invalid");
+    }
+    if (!std::isfinite(config.trajectory_options.max_reverse_velocity) ||
+        config.trajectory_options.max_reverse_velocity < 0.0 ||
+        !std::isfinite(config.simulation_options.max_reverse_velocity) ||
+        config.simulation_options.max_reverse_velocity < 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "reverse velocity limit is invalid");
+    }
+    const double max_trajectory_curvature = configuredMaxCurvature(config);
+    if (max_trajectory_curvature < 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "kinematic vehicle constraints are invalid");
     }
     if (config.local_planner != "none" && config.local_planner != "dwa" &&
         config.local_planner != "mppi") {
@@ -238,14 +298,26 @@ PipelineResult NavigationPipeline::run(
 
     result.planning.collision_free = true;
     result.metrics.collision_free = true;
-    if (config.smoother != "none") {
-        if ((config.smoother != "shortcut" &&
-             config.smoother != "curvature") ||
-            config.smoothing_iterations < 0 ||
-            (config.smoother == "curvature" &&
-             config.smoothing_max_curvature <= 0.0)) {
+    const bool preserve_motion_directions =
+        result.planning.motion_directions.size() == result.planning.path.size();
+    const bool path_requires_reverse = preserve_motion_directions &&
+        containsReverseMotion(result.planning.motion_directions);
+    const bool can_smooth_path = !path_requires_reverse;
+    if (config.smoother != "none" && config.smoother != "shortcut" &&
+        config.smoother != "curvature") {
+        return fail(StatusCode::InvalidConfiguration,
+                    "unsupported path smoother configuration");
+    }
+    if (config.smoother == "curvature" &&
+        (config.smoothing_iterations < 0 ||
+         config.smoothing_max_curvature <= 0.0)) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "unsupported path smoother configuration");
+    }
+    if (config.smoother != "none" && can_smooth_path) {
+        if (config.smoothing_iterations < 0) {
             return fail(StatusCode::InvalidConfiguration,
-                        "unsupported path smoother configuration");
+                    "unsupported path smoother configuration");
         }
         std::unique_ptr<autoplanner::CollisionChecker> smoothing_checker;
         autoplanner::CollisionChecker* checker_for_smoothing =
@@ -267,9 +339,13 @@ PipelineResult NavigationPipeline::run(
                 *checker_for_smoothing, config.smoothing_iterations);
             result.planning.path = smoother.smooth(result.planning.path);
         } else {
+            const double smoothing_curvature = max_trajectory_curvature > 0.0
+                ? std::min(config.smoothing_max_curvature,
+                           max_trajectory_curvature)
+                : config.smoothing_max_curvature;
             autoplanner::CurvatureConstrainedSmoother smoother(
                 *checker_for_smoothing,
-                config.smoothing_max_curvature,
+                smoothing_curvature,
                 config.smoothing_iterations);
             result.planning.path = smoother.smooth(result.planning.path);
         }
@@ -287,9 +363,46 @@ PipelineResult NavigationPipeline::run(
     for (const auto& point : result.planning.path) {
         waypoints.push_back({point.x, point.y});
     }
-    result.trajectory = autompc::generateTrajectory(
-        waypoints, config.trajectory_options);
+    auto trajectory_options = config.trajectory_options;
+    trajectory_options.max_curvature = max_trajectory_curvature;
+    if (path_requires_reverse) {
+        // A Hybrid A* reverse primitive is meaningful only when the tracker,
+        // simulator, and supervisor all retain its signed velocity.
+        trajectory_options.allow_reverse = true;
+        trajectory_options.max_reverse_velocity = std::min(
+            trajectory_options.max_reverse_velocity,
+            config.simulation_options.max_reverse_velocity);
+        if (trajectory_options.max_reverse_velocity <= 0.0) {
+            return fail(StatusCode::InvalidConfiguration,
+                        "reverse path requires a positive reverse velocity limit");
+        }
+        result.trajectory = autompc::generateTrajectory(
+            waypoints, result.planning.motion_directions, trajectory_options);
+    } else {
+        result.trajectory = autompc::generateTrajectory(
+            waypoints, trajectory_options);
+    }
     result.metrics.trajectory_length = autompc::arcLength(result.trajectory);
+    const auto trajectory_quality = autompc::assessTrajectory(
+        result.trajectory, max_trajectory_curvature);
+    result.metrics.max_trajectory_curvature =
+        trajectory_quality.max_abs_curvature;
+    result.metrics.minimum_turning_radius =
+        trajectory_quality.minimum_turning_radius;
+    result.metrics.kinematic_feasible = trajectory_quality.finite &&
+                                        trajectory_quality.curvature_feasible;
+    if (!result.metrics.kinematic_feasible) {
+        return fail(StatusCode::InvalidTrajectory,
+                    "trajectory violates the configured turning-radius constraint");
+    }
+    // Corner rounding is only enabled with a hard curvature limit and can
+    // leave the original polyline corridor. Validate that new continuous
+    // geometry before allowing the tracker to consume it.
+    if (max_trajectory_curvature > 0.0 && !path_requires_reverse &&
+        !trajectoryIsCollisionFree(result.trajectory, *collision_checker)) {
+        return fail(StatusCode::Collision,
+                    "continuous trajectory failed collision validation");
+    }
 
     SafetyOptions safety_options = config.safety_options;
     if (safety_options.max_velocity <= 0.0) {
@@ -306,6 +419,12 @@ PipelineResult NavigationPipeline::run(
             safety_options.max_steering,
             config.simulation_options.max_steering);
     }
+    if (path_requires_reverse) {
+        safety_options.allow_reverse = true;
+        safety_options.max_reverse_velocity = std::min(
+            safety_options.max_reverse_velocity,
+            config.simulation_options.max_reverse_velocity);
+    }
     SafetySupervisor supervisor(map, safety_options, collision_checker.get());
     const auto trajectory_decision = supervisor.validateTrajectory(result.trajectory);
     if (!trajectory_decision.safe) {
@@ -321,18 +440,19 @@ PipelineResult NavigationPipeline::run(
         return fail(initial_state_decision.status, initial_state_decision.message);
     }
 
-    autompc::KinematicBicycleSimulator simulator(
-        state, config.simulation_options);
+    auto simulation_options = config.simulation_options;
+    if (path_requires_reverse) simulation_options.allow_reverse = true;
+    autompc::KinematicBicycleSimulator simulator(state, simulation_options);
     std::unique_ptr<DwaLocalPlanner> dwa;
     std::unique_ptr<MppiLocalPlanner> mppi;
     if (config.local_planner == "dwa") {
         dwa = std::make_unique<DwaLocalPlanner>(
-            *collision_checker, config.simulation_options,
-            config.dwa_options);
+                *collision_checker, simulation_options,
+                config.dwa_options);
     } else if (config.local_planner == "mppi") {
         mppi = std::make_unique<MppiLocalPlanner>(
-            *collision_checker, config.simulation_options,
-            config.mppi_options);
+                *collision_checker, simulation_options,
+                config.mppi_options);
     }
     std::unique_ptr<autompc::PIDController> pid;
     std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
@@ -555,6 +675,12 @@ bool savePipelineMetricsJson(const PipelineResult& result,
     writeJsonNumber(output, result.metrics.path_length);
     output << ",\n  \"trajectory_length\": ";
     writeJsonNumber(output, result.metrics.trajectory_length);
+    output << ",\n  \"max_trajectory_curvature\": ";
+    writeJsonNumber(output, result.metrics.max_trajectory_curvature);
+    output << ",\n  \"minimum_turning_radius\": ";
+    writeJsonNumber(output, result.metrics.minimum_turning_radius);
+    output << ",\n  \"kinematic_feasible\": "
+           << (result.metrics.kinematic_feasible ? "true" : "false");
     output << ",\n  \"max_cross_track_error\": ";
     writeJsonNumber(output, result.metrics.max_cross_track_error);
     output << ",\n  \"mean_cross_track_error\": ";

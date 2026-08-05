@@ -20,6 +20,9 @@ struct PipelineMetrics {
     double planning_time_ms = 0.0;
     double path_length = 0.0;
     double trajectory_length = 0.0;
+    double max_trajectory_curvature = 0.0;
+    double minimum_turning_radius = 0.0;
+    bool kinematic_feasible = false;
     double max_cross_track_error = 0.0;
     double mean_cross_track_error = 0.0;
     double max_heading_error = 0.0;

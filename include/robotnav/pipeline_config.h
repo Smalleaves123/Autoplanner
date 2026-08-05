@@ -28,6 +28,7 @@ struct PipelineConfig {
     bool inflate_map = false;
     int smoothing_iterations = 100;
     double smoothing_max_curvature = 0.5;
+    bool enforce_kinematic_constraints = false;
 
     autoplanner::PlannerFactoryOptions planner_options;
     autompc::TrajectoryOptions trajectory_options;

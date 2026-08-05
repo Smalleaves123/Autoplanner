@@ -20,13 +20,48 @@ struct MovingObstacle {
     // map-cell coordinates. Zero preserves the original point-cell model.
     double radius = 0.0;
     double uncertainty_growth_per_frame = 0.0;
+
+    // Optional constant acceleration, expressed in cells per frame squared.
+    // The integer velocity fields above remain the compatibility-facing base
+    // model used by existing scenarios and aggregate initializers.
+    double acceleration_x_per_frame2 = 0.0;
+    double acceleration_y_per_frame2 = 0.0;
+
+    // Position covariance in cell^2 at start_frame. The covariance growth
+    // terms are added once per frame and must also be positive semidefinite.
+    double covariance_xx = 0.0;
+    double covariance_xy = 0.0;
+    double covariance_yy = 0.0;
+    double covariance_growth_xx_per_frame = 0.0;
+    double covariance_growth_xy_per_frame = 0.0;
+    double covariance_growth_yy_per_frame = 0.0;
+    double covariance_confidence_scale = 2.0;
 };
+
+inline bool isValidCovariance(double xx, double xy, double yy) {
+    if (!std::isfinite(xx) || !std::isfinite(xy) || !std::isfinite(yy) ||
+        xx < 0.0 || yy < 0.0) {
+        return false;
+    }
+    const double determinant = xx * yy - xy * xy;
+    return std::isfinite(determinant) && determinant >= 0.0;
+}
 
 inline bool isValidMovingObstacle(const MovingObstacle& obstacle) {
     return obstacle.end_frame >= obstacle.start_frame &&
            std::isfinite(obstacle.radius) && obstacle.radius >= 0.0 &&
            std::isfinite(obstacle.uncertainty_growth_per_frame) &&
-           obstacle.uncertainty_growth_per_frame >= 0.0;
+           obstacle.uncertainty_growth_per_frame >= 0.0 &&
+           std::isfinite(obstacle.acceleration_x_per_frame2) &&
+           std::isfinite(obstacle.acceleration_y_per_frame2) &&
+           isValidCovariance(obstacle.covariance_xx,
+                             obstacle.covariance_xy,
+                             obstacle.covariance_yy) &&
+           isValidCovariance(obstacle.covariance_growth_xx_per_frame,
+                             obstacle.covariance_growth_xy_per_frame,
+                             obstacle.covariance_growth_yy_per_frame) &&
+           std::isfinite(obstacle.covariance_confidence_scale) &&
+           obstacle.covariance_confidence_scale >= 0.0;
 }
 
 inline bool predictMovingObstaclePosition(const MovingObstacle& obstacle,
@@ -42,10 +77,56 @@ inline bool predictMovingObstaclePosition(const MovingObstacle& obstacle,
                          static_cast<double>(obstacle.start_frame);
     position = {
         static_cast<double>(obstacle.start_cell.x) +
-            static_cast<double>(obstacle.dx_per_frame) * delta,
+            static_cast<double>(obstacle.dx_per_frame) * delta +
+            0.5 * obstacle.acceleration_x_per_frame2 * delta * delta,
         static_cast<double>(obstacle.start_cell.y) +
-            static_cast<double>(obstacle.dy_per_frame) * delta};
-    return true;
+            static_cast<double>(obstacle.dy_per_frame) * delta +
+            0.5 * obstacle.acceleration_y_per_frame2 * delta * delta};
+    return std::isfinite(position.x) && std::isfinite(position.y);
+}
+
+inline double largestCovarianceStandardDeviation(
+    const MovingObstacle& obstacle,
+    double frame) {
+    if (!std::isfinite(frame) ||
+        frame < static_cast<double>(obstacle.start_frame)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const double delta = frame -
+                         static_cast<double>(obstacle.start_frame);
+    const double xx = obstacle.covariance_xx +
+                      obstacle.covariance_growth_xx_per_frame * delta;
+    const double xy = obstacle.covariance_xy +
+                      obstacle.covariance_growth_xy_per_frame * delta;
+    const double yy = obstacle.covariance_yy +
+                      obstacle.covariance_growth_yy_per_frame * delta;
+    if (!isValidCovariance(xx, xy, yy)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const double half_trace = 0.5 * (xx + yy);
+    const double half_difference = 0.5 * (xx - yy);
+    const double largest_eigenvalue =
+        half_trace + std::hypot(half_difference, xy);
+    return std::sqrt(std::max(0.0, largest_eigenvalue));
+}
+
+inline double predictedObstacleSafetyRadius(const MovingObstacle& obstacle,
+                                            double frame,
+                                            double collision_margin = 0.0) {
+    if (!std::isfinite(collision_margin) || collision_margin < 0.0) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const double delta = std::max(
+        0.0, frame - static_cast<double>(obstacle.start_frame));
+    const double standard_deviation =
+        largestCovarianceStandardDeviation(obstacle, frame);
+    const double safety_radius =
+        obstacle.radius + obstacle.uncertainty_growth_per_frame * delta +
+        obstacle.covariance_confidence_scale * standard_deviation +
+        collision_margin;
+    return std::isfinite(safety_radius)
+               ? std::max(0.0, safety_radius)
+               : std::numeric_limits<double>::infinity();
 }
 
 inline double distanceToOccupiedBox(
@@ -78,11 +159,8 @@ inline double predictedObstacleClearance(
         if (!predictMovingObstaclePosition(obstacle, frame, predicted)) {
             continue;
         }
-        const double delta = std::max(
-            0.0, frame - static_cast<double>(obstacle.start_frame));
-        const double occupied_radius = std::max(
-            0.0, obstacle.radius +
-                     obstacle.uncertainty_growth_per_frame * delta);
+        const double occupied_radius = predictedObstacleSafetyRadius(
+            obstacle, frame);
         minimum = std::min(
             minimum,
             distanceToOccupiedBox(position, predicted) - occupied_radius);
@@ -100,12 +178,8 @@ inline bool isPredictedCollision(
         if (!predictMovingObstaclePosition(obstacle, frame, predicted)) {
             continue;
         }
-        const double delta = std::max(
-            0.0, frame - static_cast<double>(obstacle.start_frame));
-        const double expansion = std::max(
-            0.0, obstacle.radius +
-                     obstacle.uncertainty_growth_per_frame * delta +
-                     collision_margin);
+        const double expansion = predictedObstacleSafetyRadius(
+            obstacle, frame, collision_margin);
         if (expansion <= 0.0 &&
             static_cast<int>(std::floor(position.x)) ==
                 static_cast<int>(std::floor(predicted.x)) &&
@@ -127,10 +201,14 @@ inline bool predictMovingObstacleCell(const MovingObstacle& obstacle,
         frame < obstacle.start_frame || frame > obstacle.end_frame) {
         return false;
     }
-    const auto delta = static_cast<int>(frame - obstacle.start_frame);
-    cell = {
-        obstacle.start_cell.x + obstacle.dx_per_frame * delta,
-        obstacle.start_cell.y + obstacle.dy_per_frame * delta};
+    autoplanner::Point2d predicted;
+    if (!predictMovingObstaclePosition(obstacle,
+                                       static_cast<double>(frame),
+                                       predicted)) {
+        return false;
+    }
+    cell = {static_cast<int>(std::floor(predicted.x)),
+            static_cast<int>(std::floor(predicted.y))};
     return true;
 }
 

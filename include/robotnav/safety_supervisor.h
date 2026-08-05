@@ -14,7 +14,9 @@ struct SafetyOptions {
     double goal_tolerance = 0.75;
     double max_cross_track_error = 5.0;
     double max_velocity = 2.0;
+    double max_reverse_velocity = 1.0;
     double max_steering = 0.7;
+    bool allow_reverse = false;
     bool enforce_collision = true;
 };
 

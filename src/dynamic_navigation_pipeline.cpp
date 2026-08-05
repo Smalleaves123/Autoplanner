@@ -36,10 +36,48 @@ struct PreparedGeometry {
     std::unique_ptr<autoplanner::CollisionChecker> checker;
 };
 
+double configuredMaxCurvature(const PipelineConfig& config) {
+    const double configured = config.trajectory_options.max_curvature;
+    if (!config.enforce_kinematic_constraints) return configured;
+    if (!std::isfinite(config.simulation_options.wheelbase) ||
+        config.simulation_options.wheelbase <= 0.0 ||
+        !std::isfinite(config.simulation_options.max_steering) ||
+        config.simulation_options.max_steering < 0.0) {
+        return -1.0;
+    }
+    const double vehicle_limit = std::tan(
+        config.simulation_options.max_steering) /
+        config.simulation_options.wheelbase;
+    if (!std::isfinite(vehicle_limit) || vehicle_limit <= 0.0) return -1.0;
+    return configured > 0.0 ? std::min(configured, vehicle_limit)
+                            : vehicle_limit;
+}
+
+void refreshGeometryMap(const autoplanner::GridMap& map,
+                        const PipelineConfig& config,
+                        PreparedGeometry& geometry) {
+    geometry.planning_map = map;
+    if ((config.inflate_map || config.footprint != "point") &&
+        geometry.circumscribed_radius > 0.0) {
+        geometry.planning_map.inflateObstacles(
+            geometry.circumscribed_radius);
+    }
+
+    if (config.footprint == "point") {
+        geometry.checker =
+            std::make_unique<autoplanner::GridCollisionChecker>(map);
+    } else {
+        geometry.checker =
+            std::make_unique<autoplanner::FootprintCollisionChecker>(
+                map, geometry.footprint);
+    }
+}
+
 bool configureGeometry(const autoplanner::GridMap& map,
                        const PipelineConfig& config,
                        PreparedGeometry& geometry,
                        std::string& error) {
+    geometry.circumscribed_radius = 0.0;
     if (config.footprint == "point") {
         geometry.footprint = autoplanner::RobotFootprint::circle(0.0);
     } else if (config.footprint == "circle" &&
@@ -61,21 +99,7 @@ bool configureGeometry(const autoplanner::GridMap& map,
         return false;
     }
 
-    geometry.planning_map = map;
-    if ((config.inflate_map || config.footprint != "point") &&
-        geometry.circumscribed_radius > 0.0) {
-        geometry.planning_map.inflateObstacles(
-            geometry.circumscribed_radius);
-    }
-
-    if (config.footprint == "point") {
-        geometry.checker =
-            std::make_unique<autoplanner::GridCollisionChecker>(map);
-    } else {
-        geometry.checker =
-            std::make_unique<autoplanner::FootprintCollisionChecker>(
-                map, geometry.footprint);
-    }
+    refreshGeometryMap(map, config, geometry);
     return true;
 }
 
@@ -103,6 +127,7 @@ bool pathIsValid(const autoplanner::CollisionChecker& checker,
 
 bool preparePath(const autoplanner::GridMap& map,
                  const PipelineConfig& config,
+                 double max_curvature,
                  PreparedGeometry& geometry,
                  autoplanner::Path2d& path,
                  std::string& error) {
@@ -135,9 +160,12 @@ bool preparePath(const autoplanner::GridMap& map,
             *checker_for_smoothing, config.smoothing_iterations);
         path = smoother.smooth(path);
     } else {
+        const double smoothing_curvature = max_curvature > 0.0
+            ? std::min(config.smoothing_max_curvature, max_curvature)
+            : config.smoothing_max_curvature;
         autoplanner::CurvatureConstrainedSmoother smoother(
             *checker_for_smoothing,
-            config.smoothing_max_curvature,
+            smoothing_curvature,
             config.smoothing_iterations);
         path = smoother.smooth(path);
     }
@@ -149,13 +177,16 @@ bool preparePath(const autoplanner::GridMap& map,
 }
 
 autompc::Trajectory makeTrajectory(const autoplanner::Path2d& path,
-                                   const PipelineConfig& config) {
+                                   const PipelineConfig& config,
+                                   double max_curvature) {
     autompc::Waypoints waypoints;
     waypoints.reserve(path.size());
     for (const auto& point : path) {
         waypoints.push_back({point.x, point.y});
     }
-    return autompc::generateTrajectory(waypoints, config.trajectory_options);
+    auto options = config.trajectory_options;
+    options.max_curvature = max_curvature;
+    return autompc::generateTrajectory(waypoints, options);
 }
 
 autompc::TrajectoryPoint closestReference(
@@ -337,6 +368,17 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         return fail(StatusCode::InvalidConfiguration,
                     "dynamic pipeline configuration is invalid");
     }
+    if (!std::isfinite(config.pipeline.trajectory_options.max_curvature) ||
+        config.pipeline.trajectory_options.max_curvature < 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "trajectory curvature limit is invalid");
+    }
+    const double max_trajectory_curvature = configuredMaxCurvature(
+        config.pipeline);
+    if (max_trajectory_curvature < 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "kinematic vehicle constraints are invalid");
+    }
     for (const auto& obstacle : config.moving_obstacles) {
         if (!isValidMovingObstacle(obstacle)) {
             return fail(StatusCode::InvalidConfiguration,
@@ -444,15 +486,31 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                         : "initial D* Lite planning failed");
     }
     autoplanner::Path2d current_path = initial.path;
-    if (!preparePath(dynamic_map, config.pipeline, geometry,
+    if (!preparePath(dynamic_map, config.pipeline, max_trajectory_curvature,
+                     geometry,
                      current_path, error)) {
         return fail(StatusCode::Collision, error);
     }
     autompc::Trajectory trajectory = makeTrajectory(
-        current_path, config.pipeline);
+        current_path, config.pipeline, max_trajectory_curvature);
     if (trajectory.empty()) {
         return fail(StatusCode::InvalidTrajectory,
                     "initial trajectory generation failed");
+    }
+    auto updateTrajectoryQuality = [&result, max_trajectory_curvature](
+        const autompc::Trajectory& candidate) {
+        const auto quality = autompc::assessTrajectory(
+            candidate, max_trajectory_curvature);
+        result.metrics.max_trajectory_curvature = quality.max_abs_curvature;
+        result.metrics.minimum_turning_radius =
+            quality.minimum_turning_radius;
+        result.metrics.kinematic_feasible = quality.finite &&
+                                             quality.curvature_feasible;
+        return result.metrics.kinematic_feasible;
+    };
+    if (!updateTrajectoryQuality(trajectory)) {
+        return fail(StatusCode::InvalidTrajectory,
+                    "trajectory violates the configured turning-radius constraint");
     }
 
     SafetyOptions safety_options = config.pipeline.safety_options;
@@ -464,32 +522,41 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         ? config.pipeline.simulation_options.max_steering
         : std::min(safety_options.max_steering,
                    config.pipeline.simulation_options.max_steering);
-    SafetySupervisor supervisor(dynamic_map, safety_options,
-                                geometry.checker.get());
-    const auto trajectory_check = supervisor.validateTrajectory(trajectory);
+
+    std::unique_ptr<SafetySupervisor> supervisor;
+    std::unique_ptr<DwaLocalPlanner> dwa;
+    std::unique_ptr<MppiLocalPlanner> mppi;
+    auto rebuildRuntimeSafety = [&]() {
+        supervisor.reset();
+        dwa.reset();
+        mppi.reset();
+        supervisor = std::make_unique<SafetySupervisor>(
+            dynamic_map, safety_options, geometry.checker.get());
+        if (config.pipeline.local_planner == "dwa") {
+            dwa = std::make_unique<DwaLocalPlanner>(
+                *geometry.checker, config.pipeline.simulation_options,
+                config.pipeline.dwa_options);
+        } else if (config.pipeline.local_planner == "mppi") {
+            mppi = std::make_unique<MppiLocalPlanner>(
+                *geometry.checker, config.pipeline.simulation_options,
+                config.pipeline.mppi_options);
+        }
+    };
+    rebuildRuntimeSafety();
+
+    const auto trajectory_check = supervisor->validateTrajectory(trajectory);
     if (!trajectory_check.safe) {
         return fail(trajectory_check.status, trajectory_check.message);
     }
 
     autompc::State state{trajectory.front().x, trajectory.front().y,
                          trajectory.front().theta, 0.0};
-    if (!supervisor.validateState(state).safe) {
+    if (!supervisor->validateState(state).safe) {
         return fail(StatusCode::Collision,
                     "initial state is not safe for the configured footprint");
     }
     autompc::KinematicBicycleSimulator simulator(
         state, config.pipeline.simulation_options);
-    std::unique_ptr<DwaLocalPlanner> dwa;
-    std::unique_ptr<MppiLocalPlanner> mppi;
-    if (config.pipeline.local_planner == "dwa") {
-        dwa = std::make_unique<DwaLocalPlanner>(
-            *geometry.checker, config.pipeline.simulation_options,
-            config.pipeline.dwa_options);
-    } else if (config.pipeline.local_planner == "mppi") {
-        mppi = std::make_unique<MppiLocalPlanner>(
-            *geometry.checker, config.pipeline.simulation_options,
-            config.pipeline.mppi_options);
-    }
     std::unique_ptr<autompc::PIDController> pid;
     std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
     std::unique_ptr<autompc::StanleyController> stanley;
@@ -652,12 +719,14 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 placed_obstacles, obstacle) || map_changed;
         }
 
-        geometry.planning_map = dynamic_map;
-        if ((config.pipeline.inflate_map ||
-             config.pipeline.footprint != "point") &&
-            geometry.circumscribed_radius > 0.0) {
-            geometry.planning_map.inflateObstacles(
-                geometry.circumscribed_radius);
+        if (map_changed) {
+            // Collision-aware runtime components retain references to the
+            // checker, so they must be destroyed before the map is refreshed.
+            supervisor.reset();
+            dwa.reset();
+            mppi.reset();
+            refreshGeometryMap(dynamic_map, config.pipeline, geometry);
+            rebuildRuntimeSafety();
         }
 
         bool replanned = false;
@@ -725,16 +794,23 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
 
             if (dstar_result.success) current_path = dstar_result.path;
-            if (!preparePath(dynamic_map, config.pipeline, geometry,
+            if (!preparePath(dynamic_map, config.pipeline,
+                             max_trajectory_curvature, geometry,
                              current_path, error)) {
                 result.metrics.safe_stop = true;
                 return fail(StatusCode::Collision, error);
             }
-            trajectory = makeTrajectory(current_path, config.pipeline);
+            trajectory = makeTrajectory(current_path, config.pipeline,
+                                        max_trajectory_curvature);
             if (trajectory.empty()) {
                 result.metrics.safe_stop = true;
                 return fail(StatusCode::InvalidTrajectory,
                             "replanned trajectory generation failed");
+            }
+            if (!updateTrajectoryQuality(trajectory)) {
+                result.metrics.safe_stop = true;
+                return fail(StatusCode::InvalidTrajectory,
+                            "replanned trajectory violates the configured turning-radius constraint");
             }
             if (pid) pid->reset();
 #ifdef AUTOMPC_HAS_EIGEN
@@ -843,13 +919,13 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 }
                 command = decision.command;
             }
-            const auto command_check = supervisor.validateCommand(command);
+            const auto command_check = supervisor->validateCommand(command);
             if (!command_check.safe) {
                 result.metrics.safe_stop = true;
                 return fail(command_check.status, command_check.message);
             }
             state = simulator.step(command);
-            const auto state_check = supervisor.validateState(state);
+            const auto state_check = supervisor->validateState(state);
             const double dynamic_frame =
                 static_cast<double>(frame) +
                 static_cast<double>(step + 1) /
@@ -883,7 +959,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                         ? "dynamic obstacle collision detected"
                         : state_check.message);
             }
-            if (supervisor.goalReached(state, trajectory)) {
+            if (supervisor->goalReached(state, trajectory)) {
                 result.metrics.goal_reached = true;
                 break;
             }
@@ -1000,6 +1076,12 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     writeJsonNumber(output, result.metrics.max_control_jump);
     output << ",\n  \"mean_control_jump\": ";
     writeJsonNumber(output, result.metrics.mean_control_jump);
+    output << ",\n  \"max_trajectory_curvature\": ";
+    writeJsonNumber(output, result.metrics.max_trajectory_curvature);
+    output << ",\n  \"minimum_turning_radius\": ";
+    writeJsonNumber(output, result.metrics.minimum_turning_radius);
+    output << ",\n  \"kinematic_feasible\": "
+           << (result.metrics.kinematic_feasible ? "true" : "false");
     output << ",\n  \"minimum_dynamic_obstacle_clearance\": ";
     writeJsonNumber(output, result.metrics.minimum_dynamic_obstacle_clearance);
     output << ",\n  \"prediction_risk_weight\": ";

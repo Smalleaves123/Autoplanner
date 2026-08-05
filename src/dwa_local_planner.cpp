@@ -109,8 +109,10 @@ autompc::State rolloutStep(const autompc::State& state,
                            double& steering,
                            const autompc::Control& command,
                            const autompc::SimulationOptions& options) {
+    const double minimum_velocity = options.allow_reverse
+        ? -options.max_reverse_velocity : 0.0;
     const double target_velocity = clampFinite(
-        command.velocity, 0.0, options.max_velocity);
+        command.velocity, minimum_velocity, options.max_velocity);
     const double velocity_delta = target_velocity - state.v;
     const double acceleration_limit = velocity_delta >= 0.0
         ? options.max_acceleration
@@ -147,7 +149,7 @@ double scoreEndpoint(const autompc::State& endpoint,
                      const autompc::SimulationOptions& simulation_options,
                      const DwaOptions& options) {
     const double nominal_speed = std::max(
-        nominal_command.velocity, trajectory.front().v);
+        std::abs(nominal_command.velocity), std::abs(trajectory.front().v));
     const auto reference = lookaheadReference(
         trajectory, start,
         std::max(0.5, nominal_speed * options.prediction_time));
@@ -155,10 +157,12 @@ double scoreEndpoint(const autompc::State& endpoint,
         std::hypot(endpoint.x - reference.x, endpoint.y - reference.y);
     const double heading_error =
         std::abs(normalizeAngle(reference.theta - endpoint.theta));
-    const double velocity_scale =
-        simulation_options.max_velocity > 0.0
-            ? simulation_options.max_velocity
-            : 1.0;
+    const double velocity_scale = std::max(
+        simulation_options.max_velocity,
+        simulation_options.max_reverse_velocity) > 0.0
+        ? std::max(simulation_options.max_velocity,
+                   simulation_options.max_reverse_velocity)
+        : 1.0;
     const double steering_scale =
         simulation_options.max_steering > 0.0
             ? simulation_options.max_steering
@@ -166,7 +170,7 @@ double scoreEndpoint(const autompc::State& endpoint,
     const double command_error =
         std::abs(command.velocity - nominal_command.velocity) / velocity_scale +
         std::abs(command.steering - nominal_command.steering) / steering_scale;
-    const double speed_reward = endpoint.v / velocity_scale;
+    const double speed_reward = std::abs(endpoint.v) / velocity_scale;
 
     return options.trajectory_weight * trajectory_error +
            options.heading_weight * heading_error +
@@ -196,8 +200,10 @@ DwaDecision DwaLocalPlanner::computeCommand(
         return {};
     }
 
+    const double minimum_velocity = simulation_options_.allow_reverse
+        ? -simulation_options_.max_reverse_velocity : 0.0;
     const double min_velocity = std::max(
-        0.0, state.v -
+        minimum_velocity, state.v -
                  simulation_options_.max_deceleration * simulation_options_.dt);
     const double max_velocity = std::min(
         simulation_options_.max_velocity,

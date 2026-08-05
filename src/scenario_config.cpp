@@ -62,6 +62,25 @@ bool loadScenarioConfig(const std::string& file_path,
         "planner.turning_weight", pipeline.planner_options.turning_weight);
     pipeline.planner_options.max_iterations = loader.getInt(
         "planner.max_iterations", pipeline.planner_options.max_iterations);
+    pipeline.planner_options.step_size = loader.getDouble(
+        "planner.step_size",
+        loader.getDouble("hybrid_astar.step_size",
+                         pipeline.planner_options.step_size));
+    pipeline.planner_options.turning_radius = loader.getDouble(
+        "planner.turning_radius",
+        loader.getDouble("hybrid_astar.turning_radius",
+                         pipeline.planner_options.turning_radius));
+    pipeline.planner_options.angle_bins = loader.getInt(
+        "planner.angle_bins",
+        loader.getInt("hybrid_astar.angle_bins",
+                      pipeline.planner_options.angle_bins));
+    pipeline.planner_options.allow_reverse = loader.getBool(
+        "planner.allow_reverse", pipeline.planner_options.allow_reverse);
+    pipeline.planner_options.reverse_penalty = loader.getDouble(
+        "planner.reverse_penalty", pipeline.planner_options.reverse_penalty);
+    pipeline.planner_options.collision_check_resolution = loader.getDouble(
+        "planner.collision_check_resolution",
+        pipeline.planner_options.collision_check_resolution);
 
     pipeline.trajectory_options.sample_spacing = loader.getDouble(
         "trajectory.sample_spacing", pipeline.trajectory_options.sample_spacing);
@@ -78,6 +97,16 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.trajectory_options.max_lateral_acceleration = loader.getDouble(
         "trajectory.max_lateral_acceleration",
         pipeline.trajectory_options.max_lateral_acceleration);
+    pipeline.trajectory_options.allow_reverse = loader.getBool(
+        "trajectory.allow_reverse", pipeline.trajectory_options.allow_reverse);
+    pipeline.trajectory_options.max_reverse_velocity = loader.getDouble(
+        "trajectory.max_reverse_velocity",
+        pipeline.trajectory_options.max_reverse_velocity);
+    pipeline.trajectory_options.max_curvature = loader.getDouble(
+        "trajectory.max_curvature", pipeline.trajectory_options.max_curvature);
+    pipeline.enforce_kinematic_constraints = loader.getBool(
+        "trajectory.enforce_kinematic_constraints",
+        pipeline.enforce_kinematic_constraints);
 
     pipeline.simulation_options.dt = loader.getDouble(
         "simulation.dt", pipeline.simulation_options.dt);
@@ -85,6 +114,11 @@ bool loadScenarioConfig(const std::string& file_path,
         "simulation.wheelbase", pipeline.simulation_options.wheelbase);
     pipeline.simulation_options.max_velocity = loader.getDouble(
         "simulation.max_velocity", pipeline.simulation_options.max_velocity);
+    pipeline.simulation_options.allow_reverse = loader.getBool(
+        "simulation.allow_reverse", pipeline.simulation_options.allow_reverse);
+    pipeline.simulation_options.max_reverse_velocity = loader.getDouble(
+        "simulation.max_reverse_velocity",
+        pipeline.simulation_options.max_reverse_velocity);
     pipeline.simulation_options.max_acceleration = loader.getDouble(
         "simulation.max_acceleration",
         pipeline.simulation_options.max_acceleration);

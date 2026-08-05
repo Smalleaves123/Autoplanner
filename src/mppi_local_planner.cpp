@@ -42,8 +42,10 @@ autompc::State rolloutStep(const autompc::State& state,
                            const autompc::Control& command,
                            const autompc::SimulationOptions& options,
                            double dt) {
+    const double minimum_velocity = options.allow_reverse
+        ? -options.max_reverse_velocity : 0.0;
     const double target_velocity = clampFinite(
-        command.velocity, 0.0, options.max_velocity);
+        command.velocity, minimum_velocity, options.max_velocity);
     const double velocity_delta = target_velocity - state.v;
     const double acceleration_limit = velocity_delta >= 0.0
         ? options.max_acceleration
@@ -170,12 +172,17 @@ MppiDecision MppiLocalPlanner::computeCommand(
         return decision;
     }
 
-    const double velocity_scale = simulation_options_.max_velocity > 0.0
-        ? simulation_options_.max_velocity : 1.0;
+    const double velocity_scale = std::max(
+        simulation_options_.max_velocity,
+        simulation_options_.max_reverse_velocity) > 0.0
+        ? std::max(simulation_options_.max_velocity,
+                   simulation_options_.max_reverse_velocity) : 1.0;
+    const double minimum_velocity = simulation_options_.allow_reverse
+        ? -simulation_options_.max_reverse_velocity : 0.0;
     const double steering_scale = simulation_options_.max_steering > 0.0
         ? simulation_options_.max_steering : 1.0;
     const autompc::Control nominal{
-        clampFinite(nominal_command.velocity, 0.0,
+        clampFinite(nominal_command.velocity, minimum_velocity,
                     simulation_options_.max_velocity),
         clampFinite(nominal_command.steering,
                     -simulation_options_.max_steering,
@@ -212,7 +219,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
                 clampFinite(
                     nominal.velocity +
                         (baseline ? 0.0 : velocity_distribution(generator)),
-                    0.0, simulation_options_.max_velocity),
+                    minimum_velocity, simulation_options_.max_velocity),
                 clampFinite(
                     nominal.steering +
                         (baseline ? 0.0 : steering_distribution(generator)),
@@ -339,7 +346,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
 
     autompc::Control aggregated_command;
     aggregated_command.velocity = clampFinite(
-        weighted_command.velocity / weight_sum, 0.0,
+        weighted_command.velocity / weight_sum, minimum_velocity,
         simulation_options_.max_velocity);
     aggregated_command.steering = clampFinite(
         weighted_command.steering / weight_sum,

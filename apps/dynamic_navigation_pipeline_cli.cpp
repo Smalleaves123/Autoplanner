@@ -1,6 +1,9 @@
 #include <filesystem>
 #include <exception>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +31,13 @@ void printHelp() {
         << "  --inflate             inflate planning map\n"
         << "  --smooth NAME         none|shortcut|curvature\n"
         << "  --smooth-max-curvature N curvature smoother limit\n"
+        << "  --max-curvature N      hard trajectory curvature limit\n"
+        << "  --min-turning-radius N hard trajectory turning-radius limit\n"
+        << "  --kinematic-check      derive curvature limit from vehicle steering\n"
+        << "  --turning-radius N     Hybrid A* minimum radius\n"
+        << "  --no-reverse            disable Hybrid A* reverse primitives\n"
+        << "  --reverse-penalty N     Hybrid A* reverse distance penalty\n"
+        << "  --collision-resolution N Hybrid A* primitive collision sample spacing\n"
         << "  --local-planner NAME  none|dwa|mppi\n"
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
@@ -51,11 +61,89 @@ void printHelp() {
         << "  --max-auto-obstacles N  maximum generated obstacles\n"
         << "  --obstacle FRAME X Y  externally occupy a cell at frame\n"
         << "  --clear-obstacle FRAME X Y  externally clear a cell at frame\n"
+        << "  --perception-updates PATH  tracked obstacle update CSV\n"
         << "  --moving-obstacle START END X Y DX DY  moving occupied cell\n"
         << "  --moving-obstacle-radius N  footprint radius for moving obstacles\n"
         << "  --moving-obstacle-uncertainty-growth N radius growth per frame\n"
+        << "  --moving-obstacle-acceleration AX AY  acceleration per frame^2\n"
+        << "  --moving-obstacle-covariance XX XY YY  initial position covariance\n"
+        << "  --moving-obstacle-covariance-growth XX XY YY  covariance growth per frame\n"
+        << "  --moving-obstacle-confidence-scale N  covariance standard-deviation scale\n"
         << "  --no-auto-obstacles   disable automatic obstacle insertion\n"
         << "  --output-dir PATH     output directory\n";
+}
+
+bool loadPerceptionUpdates(
+    const std::string& file_path,
+    std::vector<robotnav::DynamicObstacleUpdate>& updates,
+    std::string& error) {
+    std::ifstream input(file_path);
+    if (!input.is_open()) {
+        error = "failed to open perception update file: " + file_path;
+        return false;
+    }
+
+    auto trim = [](std::string value) {
+        const auto first = value.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) return std::string{};
+        const auto last = value.find_last_not_of(" \t\r\n");
+        return value.substr(first, last - first + 1);
+    };
+
+    std::string line;
+    std::size_t line_number = 0;
+    while (std::getline(input, line)) {
+        ++line_number;
+        line = trim(line);
+        if (line.empty()) continue;
+        if (line_number == 1 &&
+            line == "frame,cell_x,cell_y,occupied") {
+            continue;
+        }
+
+        std::istringstream fields(line);
+        std::string frame_text;
+        std::string cell_x_text;
+        std::string cell_y_text;
+        std::string occupied_text;
+        std::string extra;
+        if (!std::getline(fields, frame_text, ',') ||
+            !std::getline(fields, cell_x_text, ',') ||
+            !std::getline(fields, cell_y_text, ',') ||
+            !std::getline(fields, occupied_text) ||
+            std::getline(fields, extra, ',')) {
+            error = "invalid perception update at line " +
+                std::to_string(line_number);
+            return false;
+        }
+        try {
+            std::size_t consumed = 0;
+            const auto frame = static_cast<std::size_t>(std::stoul(
+                trim(frame_text), &consumed));
+            if (consumed != trim(frame_text).size()) throw std::invalid_argument(
+                "invalid frame");
+            consumed = 0;
+            const int cell_x = std::stoi(trim(cell_x_text), &consumed);
+            if (consumed != trim(cell_x_text).size()) throw std::invalid_argument(
+                "invalid x");
+            consumed = 0;
+            const int cell_y = std::stoi(trim(cell_y_text), &consumed);
+            if (consumed != trim(cell_y_text).size()) throw std::invalid_argument(
+                "invalid y");
+            const std::string occupied = trim(occupied_text);
+            if (occupied != "0" && occupied != "1" &&
+                occupied != "false" && occupied != "true") {
+                throw std::invalid_argument("invalid occupancy");
+            }
+            updates.push_back({frame, {cell_x, cell_y},
+                               occupied == "1" || occupied == "true"});
+        } catch (const std::exception& exception) {
+            error = "invalid perception update at line " +
+                std::to_string(line_number) + ": " + exception.what();
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -64,6 +152,7 @@ int main(int argc, char** argv) {
     robotnav::ScenarioConfig scenario;
     robotnav::DynamicPipelineConfig dynamic;
     std::string scenario_path;
+    std::string perception_updates_path;
     std::string output_dir = "results/dynamic_navigation_pipeline";
     bool has_map = false;
     bool has_start = false;
@@ -94,6 +183,16 @@ int main(int argc, char** argv) {
     bool has_prediction_risk_clearance = false;
     bool has_moving_obstacle_radius = false;
     bool has_moving_obstacle_uncertainty_growth = false;
+    bool has_moving_obstacle_acceleration = false;
+    bool has_moving_obstacle_covariance = false;
+    bool has_moving_obstacle_covariance_growth = false;
+    bool has_moving_obstacle_confidence_scale = false;
+    bool has_max_curvature = false;
+    bool has_kinematic_check = false;
+    bool has_turning_radius = false;
+    bool has_allow_reverse = false;
+    bool has_reverse_penalty = false;
+    bool has_collision_resolution = false;
     bool has_velocity = false;
     std::string map_override;
     autoplanner::Point2i start_override;
@@ -123,6 +222,19 @@ int main(int argc, char** argv) {
     double prediction_risk_clearance_override = 0.0;
     double moving_obstacle_radius = 0.0;
     double moving_obstacle_uncertainty_growth = 0.0;
+    double moving_obstacle_acceleration_x = 0.0;
+    double moving_obstacle_acceleration_y = 0.0;
+    double moving_obstacle_covariance_xx = 0.0;
+    double moving_obstacle_covariance_xy = 0.0;
+    double moving_obstacle_covariance_yy = 0.0;
+    double moving_obstacle_covariance_growth_xx = 0.0;
+    double moving_obstacle_covariance_growth_xy = 0.0;
+    double moving_obstacle_covariance_growth_yy = 0.0;
+    double moving_obstacle_confidence_scale = 2.0;
+    double max_curvature_override = 0.0;
+    double turning_radius_override = 0.0;
+    double reverse_penalty_override = 0.0;
+    double collision_resolution_override = 0.0;
     double velocity_override = 0.0;
     std::vector<robotnav::DynamicObstacleUpdate> obstacle_updates;
     std::vector<robotnav::MovingObstacle> moving_obstacles;
@@ -170,6 +282,26 @@ int main(int argc, char** argv) {
         } else if (arg == "--smooth-max-curvature" && i + 1 < argc) {
             smoothing_max_curvature_override = std::stod(argv[++i]);
             has_smoothing_max_curvature = true;
+        } else if (arg == "--max-curvature" && i + 1 < argc) {
+            max_curvature_override = std::stod(argv[++i]);
+            has_max_curvature = true;
+        } else if (arg == "--min-turning-radius" && i + 1 < argc) {
+            const double radius = std::stod(argv[++i]);
+            max_curvature_override = radius > 0.0 ? 1.0 / radius : -1.0;
+            has_max_curvature = true;
+        } else if (arg == "--kinematic-check") {
+            has_kinematic_check = true;
+        } else if (arg == "--turning-radius" && i + 1 < argc) {
+            turning_radius_override = std::stod(argv[++i]);
+            has_turning_radius = true;
+        } else if (arg == "--no-reverse") {
+            has_allow_reverse = true;
+        } else if (arg == "--reverse-penalty" && i + 1 < argc) {
+            reverse_penalty_override = std::stod(argv[++i]);
+            has_reverse_penalty = true;
+        } else if (arg == "--collision-resolution" && i + 1 < argc) {
+            collision_resolution_override = std::stod(argv[++i]);
+            has_collision_resolution = true;
         } else if (arg == "--local-planner" && i + 1 < argc) {
             local_planner_override = argv[++i];
             has_local_planner = true;
@@ -240,6 +372,8 @@ int main(int argc, char** argv) {
             update.cell = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             update.occupied = arg == "--obstacle";
             obstacle_updates.push_back(update);
+        } else if (arg == "--perception-updates" && i + 1 < argc) {
+            perception_updates_path = argv[++i];
         } else if (arg == "--moving-obstacle" && i + 6 < argc) {
             robotnav::MovingObstacle obstacle;
             obstacle.start_frame = static_cast<std::size_t>(
@@ -258,6 +392,27 @@ int main(int argc, char** argv) {
                    i + 1 < argc) {
             moving_obstacle_uncertainty_growth = std::stod(argv[++i]);
             has_moving_obstacle_uncertainty_growth = true;
+        } else if (arg == "--moving-obstacle-acceleration" &&
+                   i + 2 < argc) {
+            moving_obstacle_acceleration_x = std::stod(argv[++i]);
+            moving_obstacle_acceleration_y = std::stod(argv[++i]);
+            has_moving_obstacle_acceleration = true;
+        } else if (arg == "--moving-obstacle-covariance" &&
+                   i + 3 < argc) {
+            moving_obstacle_covariance_xx = std::stod(argv[++i]);
+            moving_obstacle_covariance_xy = std::stod(argv[++i]);
+            moving_obstacle_covariance_yy = std::stod(argv[++i]);
+            has_moving_obstacle_covariance = true;
+        } else if (arg == "--moving-obstacle-covariance-growth" &&
+                   i + 3 < argc) {
+            moving_obstacle_covariance_growth_xx = std::stod(argv[++i]);
+            moving_obstacle_covariance_growth_xy = std::stod(argv[++i]);
+            moving_obstacle_covariance_growth_yy = std::stod(argv[++i]);
+            has_moving_obstacle_covariance_growth = true;
+        } else if (arg == "--moving-obstacle-confidence-scale" &&
+                   i + 1 < argc) {
+            moving_obstacle_confidence_scale = std::stod(argv[++i]);
+            has_moving_obstacle_confidence_scale = true;
         } else if (arg == "--no-auto-obstacles") {
             dynamic.auto_insert_obstacles = false;
         } else if (arg == "--output-dir" && i + 1 < argc) {
@@ -298,6 +453,22 @@ int main(int argc, char** argv) {
     if (has_smoothing_max_curvature)
         scenario.pipeline.smoothing_max_curvature =
             smoothing_max_curvature_override;
+    if (has_max_curvature)
+        scenario.pipeline.trajectory_options.max_curvature =
+            max_curvature_override;
+    if (has_kinematic_check)
+        scenario.pipeline.enforce_kinematic_constraints = true;
+    if (has_turning_radius)
+        scenario.pipeline.planner_options.turning_radius =
+            turning_radius_override;
+    if (has_allow_reverse)
+        scenario.pipeline.planner_options.allow_reverse = false;
+    if (has_reverse_penalty)
+        scenario.pipeline.planner_options.reverse_penalty =
+            reverse_penalty_override;
+    if (has_collision_resolution)
+        scenario.pipeline.planner_options.collision_check_resolution =
+            collision_resolution_override;
     if (has_local_planner) scenario.pipeline.local_planner =
         local_planner_override;
     if (has_dwa_prediction_time)
@@ -341,6 +512,15 @@ int main(int argc, char** argv) {
         scenario.pipeline.trajectory_options.target_velocity = velocity_override;
     }
 
+    if (!perception_updates_path.empty()) {
+        std::string error;
+        if (!loadPerceptionUpdates(perception_updates_path, obstacle_updates,
+                                   error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
+    }
+
     dynamic.pipeline = scenario.pipeline;
     dynamic.obstacle_updates = std::move(obstacle_updates);
     for (auto& obstacle : moving_obstacles) {
@@ -350,6 +530,29 @@ int main(int argc, char** argv) {
         if (has_moving_obstacle_uncertainty_growth) {
             obstacle.uncertainty_growth_per_frame =
                 moving_obstacle_uncertainty_growth;
+        }
+        if (has_moving_obstacle_acceleration) {
+            obstacle.acceleration_x_per_frame2 =
+                moving_obstacle_acceleration_x;
+            obstacle.acceleration_y_per_frame2 =
+                moving_obstacle_acceleration_y;
+        }
+        if (has_moving_obstacle_covariance) {
+            obstacle.covariance_xx = moving_obstacle_covariance_xx;
+            obstacle.covariance_xy = moving_obstacle_covariance_xy;
+            obstacle.covariance_yy = moving_obstacle_covariance_yy;
+        }
+        if (has_moving_obstacle_covariance_growth) {
+            obstacle.covariance_growth_xx_per_frame =
+                moving_obstacle_covariance_growth_xx;
+            obstacle.covariance_growth_xy_per_frame =
+                moving_obstacle_covariance_growth_xy;
+            obstacle.covariance_growth_yy_per_frame =
+                moving_obstacle_covariance_growth_yy;
+        }
+        if (has_moving_obstacle_confidence_scale) {
+            obstacle.covariance_confidence_scale =
+                moving_obstacle_confidence_scale;
         }
     }
     dynamic.moving_obstacles = std::move(moving_obstacles);

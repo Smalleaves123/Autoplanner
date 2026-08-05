@@ -35,9 +35,13 @@ SafetyDecision SafetySupervisor::validateTrajectory(
         if (!std::isfinite(point.x) || !std::isfinite(point.y) ||
             !std::isfinite(point.theta) || !std::isfinite(point.v) ||
             !std::isfinite(point.curvature) ||
-            !std::isfinite(point.acceleration) || point.v < 0.0) {
+            !std::isfinite(point.acceleration) ||
+            point.v < (options_.allow_reverse
+                           ? -options_.max_reverse_velocity
+                           : 0.0) ||
+            point.v > options_.max_velocity) {
             return {false, StatusCode::InvalidTrajectory,
-                    "reference trajectory contains a non-finite or negative value"};
+                    "reference trajectory contains a non-finite or out-of-range value"};
         }
     }
     return {true, StatusCode::Success, "trajectory is valid"};
@@ -49,7 +53,9 @@ SafetyDecision SafetySupervisor::validateCommand(
         return {false, StatusCode::ControllerInfeasible,
                 "controller produced a non-finite command"};
     }
-    if (command.velocity < -1e-9 ||
+    if (command.velocity < (options_.allow_reverse
+                                ? -options_.max_reverse_velocity
+                                : 0.0) - 1e-9 ||
         command.velocity > options_.max_velocity + 1e-9 ||
         std::abs(command.steering) > options_.max_steering + 1e-9) {
         return {false, StatusCode::ControllerInfeasible,
@@ -64,7 +70,10 @@ SafetyDecision SafetySupervisor::validateState(
         return {false, StatusCode::SafeStop,
                 "simulator produced a non-finite state"};
     }
-    if (state.v < -1e-9 || state.v > options_.max_velocity + 1e-9) {
+    if (state.v < (options_.allow_reverse
+                       ? -options_.max_reverse_velocity
+                       : 0.0) - 1e-9 ||
+        state.v > options_.max_velocity + 1e-9) {
         return {false, StatusCode::SafeStop,
                 "state velocity exceeds configured limits"};
     }

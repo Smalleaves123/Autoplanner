@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <exception>
 #include <iostream>
 #include <string>
 
@@ -24,6 +25,13 @@ void printHelp() {
         << "  --smooth NAME         none|shortcut|curvature\n"
         << "  --smooth-iterations N smoothing iterations\n"
         << "  --smooth-max-curvature N curvature smoother limit\n"
+        << "  --max-curvature N      hard trajectory curvature limit\n"
+        << "  --min-turning-radius N hard trajectory turning-radius limit\n"
+        << "  --kinematic-check      derive curvature limit from vehicle steering\n"
+        << "  --turning-radius N     Hybrid A* minimum radius\n"
+        << "  --no-reverse            disable Hybrid A* reverse primitives\n"
+        << "  --reverse-penalty N     Hybrid A* reverse distance penalty\n"
+        << "  --collision-resolution N Hybrid A* primitive collision sample spacing\n"
         << "  --local-planner NAME  none|dwa|mppi\n"
         << "  --dwa-prediction-time N  DWA rollout horizon seconds\n"
         << "  --dwa-velocity-samples N DWA velocity samples\n"
@@ -78,7 +86,14 @@ int main(int argc, char** argv) {
     bool has_max_steps = false;
     bool has_velocity = false;
     bool has_dt = false;
+    bool has_max_curvature = false;
+    bool has_kinematic_check = false;
+    bool has_turning_radius = false;
+    bool has_allow_reverse = false;
+    bool has_reverse_penalty = false;
+    bool has_collision_resolution = false;
 
+    try {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--scenario" && i + 1 < argc) {
@@ -179,6 +194,33 @@ int main(int argc, char** argv) {
         } else if (arg == "--dt" && i + 1 < argc) {
             scenario.pipeline.simulation_options.dt = std::stod(argv[++i]);
             has_dt = true;
+        } else if (arg == "--max-curvature" && i + 1 < argc) {
+            scenario.pipeline.trajectory_options.max_curvature =
+                std::stod(argv[++i]);
+            has_max_curvature = true;
+        } else if (arg == "--min-turning-radius" && i + 1 < argc) {
+            const double radius = std::stod(argv[++i]);
+            scenario.pipeline.trajectory_options.max_curvature =
+                radius > 0.0 ? 1.0 / radius : -1.0;
+            has_max_curvature = true;
+        } else if (arg == "--kinematic-check") {
+            scenario.pipeline.enforce_kinematic_constraints = true;
+            has_kinematic_check = true;
+        } else if (arg == "--turning-radius" && i + 1 < argc) {
+            scenario.pipeline.planner_options.turning_radius =
+                std::stod(argv[++i]);
+            has_turning_radius = true;
+        } else if (arg == "--no-reverse") {
+            scenario.pipeline.planner_options.allow_reverse = false;
+            has_allow_reverse = true;
+        } else if (arg == "--reverse-penalty" && i + 1 < argc) {
+            scenario.pipeline.planner_options.reverse_penalty =
+                std::stod(argv[++i]);
+            has_reverse_penalty = true;
+        } else if (arg == "--collision-resolution" && i + 1 < argc) {
+            scenario.pipeline.planner_options.collision_check_resolution =
+                std::stod(argv[++i]);
+            has_collision_resolution = true;
         } else if (arg == "--output-dir" && i + 1 < argc) {
             output_dir = argv[++i];
         } else if (arg == "--help") {
@@ -189,6 +231,12 @@ int main(int argc, char** argv) {
             printHelp();
             return 1;
         }
+    }
+    } catch (const std::exception& error) {
+        std::cerr << "Invalid command-line argument: " << error.what()
+                  << "\n";
+        printHelp();
+        return 1;
     }
 
     if (!scenario_path.empty()) {
@@ -264,6 +312,24 @@ int main(int argc, char** argv) {
             pipeline_override.trajectory_options.target_velocity;
         if (has_dt) scenario.pipeline.simulation_options.dt =
             pipeline_override.simulation_options.dt;
+        if (has_max_curvature)
+            scenario.pipeline.trajectory_options.max_curvature =
+                pipeline_override.trajectory_options.max_curvature;
+        if (has_kinematic_check)
+            scenario.pipeline.enforce_kinematic_constraints =
+                pipeline_override.enforce_kinematic_constraints;
+        if (has_turning_radius)
+            scenario.pipeline.planner_options.turning_radius =
+                pipeline_override.planner_options.turning_radius;
+        if (has_allow_reverse)
+            scenario.pipeline.planner_options.allow_reverse =
+                pipeline_override.planner_options.allow_reverse;
+        if (has_reverse_penalty)
+            scenario.pipeline.planner_options.reverse_penalty =
+                pipeline_override.planner_options.reverse_penalty;
+        if (has_collision_resolution)
+            scenario.pipeline.planner_options.collision_check_resolution =
+                pipeline_override.planner_options.collision_check_resolution;
         if (has_start) scenario.start = start_override;
         if (has_goal) scenario.goal = goal_override;
     }

@@ -76,6 +76,9 @@ struct DynamicPipelineMetrics {
     double local_planner_time_ms = 0.0;
     double max_control_jump = 0.0;
     double mean_control_jump = 0.0;
+    double max_trajectory_curvature = 0.0;
+    double minimum_turning_radius = 0.0;
+    bool kinematic_feasible = false;
     double minimum_dynamic_obstacle_clearance = 0.0;
     double prediction_risk_weight = 0.0;
     double prediction_risk_clearance = 0.0;

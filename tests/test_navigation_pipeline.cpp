@@ -11,6 +11,7 @@
 #include "autoplanner/collision/grid_collision_checker.h"
 #include "autoplanner/core/grid_map.h"
 #include "autompc/core/trajectory.h"
+#include "autompc/trajectory/trajectory_generator.h"
 #include "robotnav/dwa_local_planner.h"
 #include "robotnav/dynamic_navigation_pipeline.h"
 #include "robotnav/mppi_local_planner.h"
@@ -64,6 +65,54 @@ TEST(DynamicObstaclePredictionTest, ExpandsFootprintWithUncertainty) {
         obstacles, {1.25, 2.5}, 5.0));
 }
 
+TEST(DynamicObstaclePredictionTest, PredictsConstantAcceleration) {
+    robotnav::MovingObstacle obstacle{0, 10, {1, 2}, 2, -1};
+    obstacle.acceleration_x_per_frame2 = 0.5;
+    obstacle.acceleration_y_per_frame2 = 2.0;
+
+    autoplanner::Point2d predicted;
+    ASSERT_TRUE(robotnav::predictMovingObstaclePosition(
+        obstacle, 4.0, predicted));
+    EXPECT_DOUBLE_EQ(predicted.x, 13.0);
+    EXPECT_DOUBLE_EQ(predicted.y, 14.0);
+}
+
+TEST(DynamicObstaclePredictionTest, UsesCovarianceEigenvalueForSafetyRadius) {
+    robotnav::MovingObstacle obstacle{0, 10, {2, 2}, 0, 0};
+    obstacle.radius = 0.5;
+    obstacle.covariance_xx = 1.0;
+    obstacle.covariance_xy = 0.0;
+    obstacle.covariance_yy = 4.0;
+    obstacle.covariance_growth_xx_per_frame = 0.25;
+    obstacle.covariance_growth_yy_per_frame = 0.0;
+    obstacle.covariance_confidence_scale = 2.0;
+
+    EXPECT_TRUE(robotnav::isValidMovingObstacle(obstacle));
+    EXPECT_NEAR(robotnav::largestCovarianceStandardDeviation(obstacle, 4.0),
+                2.0, 1e-9);
+    EXPECT_NEAR(robotnav::predictedObstacleSafetyRadius(obstacle, 4.0),
+                4.5, 1e-9);
+}
+
+TEST(DynamicObstaclePredictionTest, CovarianceExpansionMakesCollisionConservative) {
+    robotnav::MovingObstacle nominal{0, 10, {2, 2}, 0, 0};
+    robotnav::MovingObstacle uncertain = nominal;
+    uncertain.covariance_xx = 1.0;
+    uncertain.covariance_yy = 1.0;
+    const std::vector<robotnav::MovingObstacle> nominal_obstacles = {nominal};
+    const std::vector<robotnav::MovingObstacle> uncertain_obstacles = {
+        uncertain};
+
+    EXPECT_FALSE(robotnav::isPredictedCollision(
+        nominal_obstacles, {0.25, 2.5}, 0.0));
+    EXPECT_TRUE(robotnav::isPredictedCollision(
+        uncertain_obstacles, {0.25, 2.5}, 0.0));
+    EXPECT_LT(robotnav::predictedObstacleClearance(
+                  uncertain_obstacles, {0.25, 2.5}, 0.0),
+              robotnav::predictedObstacleClearance(
+                  nominal_obstacles, {0.25, 2.5}, 0.0));
+}
+
 TEST(DynamicObstaclePredictionTest, RejectsInvalidPredictionConfiguration) {
     const auto map = loadSimpleMap();
     robotnav::DynamicPipelineConfig config;
@@ -72,6 +121,25 @@ TEST(DynamicObstaclePredictionTest, RejectsInvalidPredictionConfiguration) {
     config.steps_per_frame = 2;
     config.auto_insert_obstacles = false;
     config.moving_obstacles.push_back({3, 1, {3, 3}, 0, 0});
+
+    const auto result = robotnav::DynamicNavigationPipeline{}.run(
+        map, {1, 1}, {5, 5}, config);
+    EXPECT_EQ(result.metrics.status,
+              robotnav::StatusCode::InvalidConfiguration);
+}
+
+TEST(DynamicObstaclePredictionTest, RejectsNonPositiveSemidefiniteCovariance) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.frames = 2;
+    config.steps_per_frame = 2;
+    config.auto_insert_obstacles = false;
+    robotnav::MovingObstacle obstacle{0, 2, {3, 3}, 0, 0};
+    obstacle.covariance_xx = 1.0;
+    obstacle.covariance_xy = 2.0;
+    obstacle.covariance_yy = 1.0;
+    config.moving_obstacles.push_back(obstacle);
 
     const auto result = robotnav::DynamicNavigationPipeline{}.run(
         map, {1, 1}, {5, 5}, config);
@@ -220,6 +288,103 @@ TEST(SafetySupervisorTest, RejectsInvalidTrajectoryAndCommand) {
     EXPECT_EQ(supervisor.validateCommand(
                   {std::numeric_limits<double>::quiet_NaN(), 0.0}).status,
               robotnav::StatusCode::ControllerInfeasible);
+}
+
+TEST(TrajectoryQualityTest, ReportsCurvatureAndTurningRadius) {
+    autompc::Trajectory trajectory(3);
+    trajectory[0].curvature = 0.0;
+    trajectory[1].curvature = 0.25;
+    trajectory[2].curvature = -0.5;
+
+    const auto quality = autompc::assessTrajectory(trajectory, 0.4);
+    EXPECT_TRUE(quality.finite);
+    EXPECT_FALSE(quality.curvature_feasible);
+    EXPECT_DOUBLE_EQ(quality.max_abs_curvature, 0.5);
+    EXPECT_DOUBLE_EQ(quality.minimum_turning_radius, 2.0);
+
+    const auto unconstrained = autompc::assessTrajectory(trajectory);
+    EXPECT_TRUE(unconstrained.curvature_feasible);
+}
+
+TEST(TrajectoryGeneratorTest, StopsAtCurvatureLimitViolation) {
+    autompc::Waypoints waypoints = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}};
+    autompc::TrajectoryOptions options;
+    options.sample_spacing = 0.25;
+    options.target_velocity = 1.0;
+    options.max_velocity = 1.0;
+    options.max_curvature = 0.5;
+
+    const auto trajectory = autompc::generateTrajectory(waypoints, options);
+    ASSERT_FALSE(trajectory.empty());
+    EXPECT_TRUE(std::any_of(
+        trajectory.begin(), trajectory.end(),
+        [](const autompc::TrajectoryPoint& point) {
+            return std::abs(point.curvature) > 0.5 && point.v == 0.0;
+        }));
+}
+
+TEST(TrajectoryGeneratorTest, RoundsWideCornersToTheCurvatureLimit) {
+    const autompc::Waypoints waypoints = {
+        {0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+    autompc::TrajectoryOptions options;
+    options.sample_spacing = 0.2;
+    options.target_velocity = 1.0;
+    options.max_velocity = 1.0;
+    options.max_curvature = 0.5;
+
+    const auto trajectory = autompc::generateTrajectory(waypoints, options);
+    ASSERT_FALSE(trajectory.empty());
+    const auto quality = autompc::assessTrajectory(
+        trajectory, options.max_curvature);
+    EXPECT_TRUE(quality.finite);
+    EXPECT_TRUE(quality.curvature_feasible);
+    EXPECT_LE(quality.max_abs_curvature, 0.5 + 1e-9);
+}
+
+TEST(TrajectoryGeneratorTest, PreservesReverseSegmentsAndStopsForGearChange) {
+    const autompc::Waypoints waypoints = {
+        {0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}};
+    const std::vector<int> directions = {1, -1, -1};
+    autompc::TrajectoryOptions options;
+    options.sample_spacing = 0.25;
+    options.target_velocity = 1.0;
+    options.max_velocity = 1.0;
+    options.allow_reverse = true;
+    options.max_reverse_velocity = 0.5;
+
+    const auto trajectory = autompc::generateTrajectory(
+        waypoints, directions, options);
+    ASSERT_FALSE(trajectory.empty());
+    EXPECT_TRUE(std::any_of(
+        trajectory.begin(), trajectory.end(),
+        [](const autompc::TrajectoryPoint& point) { return point.v < 0.0; }));
+    EXPECT_TRUE(std::any_of(
+        trajectory.begin(), trajectory.end(),
+        [](const autompc::TrajectoryPoint& point) {
+            return std::abs(point.v) < 1e-9;
+        }));
+    for (const auto& point : trajectory) {
+        EXPECT_LE(std::abs(point.v), 1.0 + 1e-9);
+        EXPECT_GE(point.v, -0.5 - 1e-9);
+    }
+}
+
+TEST(SafetySupervisorTest, AllowsConfiguredReverseVelocityOnly) {
+    const auto map = loadSimpleMap();
+    autompc::Trajectory trajectory(1);
+    trajectory.front().v = -0.5;
+
+    robotnav::SafetyOptions options;
+    options.allow_reverse = true;
+    options.max_reverse_velocity = 0.5;
+    robotnav::SafetySupervisor reverse_supervisor(map, options);
+    EXPECT_TRUE(reverse_supervisor.validateTrajectory(trajectory).safe);
+    EXPECT_TRUE(reverse_supervisor.validateCommand({-0.5, 0.0}).safe);
+
+    options.allow_reverse = false;
+    robotnav::SafetySupervisor forward_only_supervisor(map, options);
+    EXPECT_FALSE(forward_only_supervisor.validateTrajectory(trajectory).safe);
+    EXPECT_FALSE(forward_only_supervisor.validateCommand({-0.5, 0.0}).safe);
 }
 
 TEST(SpaceTimeAStarTest, AvoidsPredictedMovingObstacle) {
@@ -596,6 +761,9 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "  y: 21\n"
                << "planner:\n"
                << "  name: dijkstra\n"
+               << "  allow_reverse: false\n"
+               << "  reverse_penalty: 1.8\n"
+               << "  collision_check_resolution: 0.1\n"
                << "controller:\n"
                << "  name: pid\n"
                << "robot:\n"
@@ -606,6 +774,9 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "  name: shortcut\n"
                << "  iterations: 12\n"
                << "  max_curvature: 0.4\n"
+               << "trajectory:\n"
+               << "  max_curvature: 0.25\n"
+               << "  enforce_kinematic_constraints: true\n"
                << "local_planner:\n"
                << "  name: dwa\n"
                << "  dwa:\n"
@@ -644,6 +815,12 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_EQ(scenario.pipeline.smoother, "shortcut");
     EXPECT_EQ(scenario.pipeline.smoothing_iterations, 12);
     EXPECT_DOUBLE_EQ(scenario.pipeline.smoothing_max_curvature, 0.4);
+    EXPECT_FALSE(scenario.pipeline.planner_options.allow_reverse);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.planner_options.reverse_penalty, 1.8);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.planner_options.collision_check_resolution, 0.1);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.trajectory_options.max_curvature, 0.25);
+    EXPECT_TRUE(scenario.pipeline.enforce_kinematic_constraints);
     EXPECT_EQ(scenario.pipeline.local_planner, "dwa");
     EXPECT_DOUBLE_EQ(scenario.pipeline.dwa_options.prediction_time, 0.7);
     EXPECT_EQ(scenario.pipeline.dwa_options.velocity_samples, 3);
