@@ -5,6 +5,9 @@ project(RobotNav VERSION 0.5.0 LANGUAGES CXX)
 # Build both sub-projects.
 # Disable tests in sub-projects with -DBUILD_TESTS=OFF if desired.
 option(BUILD_TESTS "Build unit tests for all sub-projects" ON)
+option(BUILD_PYTHON_TESTS "Register Python unit tests with CTest" ON)
+option(ROBOTNAV_REQUIRE_TEST_DEPENDENCIES
+       "Fail configuration when test dependencies are unavailable" OFF)
 option(BUILD_PYTHON_BINDINGS "Build pybind11 Python extension modules" OFF)
 option(ROBOTNAV_ENABLE_SANITIZERS
        "Enable address and undefined-behaviour sanitizers" OFF)
@@ -16,6 +19,10 @@ option(ROBOTNAV_BUILD_QUALITY_TARGETS
 
 if(BUILD_TESTS)
     enable_testing()
+endif()
+
+if(BUILD_TESTS AND ROBOTNAV_REQUIRE_TEST_DEPENDENCIES)
+    find_package(GTest REQUIRED)
 endif()
 
 # Shared settings
@@ -90,6 +97,50 @@ if(BUILD_TESTS)
     if(GTest_FOUND)
         add_subdirectory(tests)
     else()
+        if(ROBOTNAV_REQUIRE_TEST_DEPENDENCIES)
+            message(FATAL_ERROR "GTest is required but was not found")
+        endif()
         message(STATUS "GTest not found; skipping RobotNav integration tests")
+    endif()
+endif()
+
+# Python tests are deliberately registered individually.  The core Python
+# helpers use only the standard library, while dashboard tests additionally
+# require optional YAML/Plotly/Streamlit dependencies.  This keeps the normal
+# C++ test suite usable in a minimal environment without silently omitting the
+# tests that can run there.
+if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        function(robotnav_add_python_test name source)
+            add_test(NAME ${name}
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/${source}
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+            set_tests_properties(${name} PROPERTIES
+                                 LABELS "python"
+                                 TIMEOUT 60)
+        endfunction()
+
+        robotnav_add_python_test(test_python_perception_mapping
+                                 autoplanner/tests/test_perception_mapping.py)
+        robotnav_add_python_test(test_python_local_planner_benchmark
+                                 autoplanner/tests/test_local_planner_benchmark.py)
+
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c
+                    "import yaml, plotly, streamlit"
+            RESULT_VARIABLE ROBOTNAV_DASHBOARD_IMPORT_RESULT
+            OUTPUT_QUIET ERROR_QUIET)
+        if(ROBOTNAV_DASHBOARD_IMPORT_RESULT EQUAL 0)
+            robotnav_add_python_test(test_python_dashboard_support
+                                     autoplanner/tests/test_dashboard_support.py)
+        else()
+            message(STATUS
+                    "Dashboard Python dependencies not found; skipping dashboard tests")
+        endif()
+    elseif(ROBOTNAV_REQUIRE_TEST_DEPENDENCIES)
+        message(FATAL_ERROR "Python3 interpreter is required but was not found")
+    else()
+        message(STATUS "Python3 interpreter not found; skipping Python tests")
     endif()
 endif()
