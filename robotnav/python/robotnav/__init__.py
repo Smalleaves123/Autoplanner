@@ -14,6 +14,20 @@ from .planning import (
     available_planners,
     plan,
 )
+from .control import (
+    ControlCommand,
+    Controller,
+    ControllerConfig,
+    RobotState,
+    SimulationConfig,
+    SimulationResult,
+    TrackingMetrics,
+    TrajectoryConfig,
+    TrajectoryPoint,
+    TrajectoryResult,
+    generate_trajectory,
+    simulate,
+)
 
 __all__ = [
     "BackendUnavailableError",
@@ -22,6 +36,18 @@ __all__ = [
     "PlannerConfig",
     "available_planners",
     "plan",
+    "ControlCommand",
+    "Controller",
+    "ControllerConfig",
+    "RobotState",
+    "SimulationConfig",
+    "SimulationResult",
+    "TrackingMetrics",
+    "TrajectoryConfig",
+    "TrajectoryPoint",
+    "TrajectoryResult",
+    "generate_trajectory",
+    "simulate",
 ]
 
 __version__ = "0.1.0"

@@ -158,6 +158,14 @@ PYBIND11_MODULE(_autompc, m) {
               return generateTrajectory(waypoints, options);
           },
           py::arg("waypoints"), py::arg("options") = TrajectoryOptions{});
+    m.def("generate_trajectory_with_directions",
+          [](const Waypoints& waypoints,
+             const std::vector<int>& motion_directions,
+             const TrajectoryOptions& options) {
+              return generateTrajectory(waypoints, motion_directions, options);
+          },
+          py::arg("waypoints"), py::arg("motion_directions"),
+          py::arg("options") = TrajectoryOptions{});
     m.def("save_trajectory_csv", &saveTrajectoryCsv);
     m.def("arc_length", &arcLength);
     m.def("closest_point_distance", &closestPointDistance);

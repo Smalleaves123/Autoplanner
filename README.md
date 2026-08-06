@@ -221,7 +221,25 @@ result = plan(
 print(result.success, result.status_code, result.path_length)
 ```
 
-For source-tree binding builds, include `build-python/python` in
+The same result can be passed directly to AutoMPC trajectory generation and
+closed-loop simulation:
+
+```python
+import robotnav
+
+trajectory = robotnav.generate_trajectory(
+    result, robotnav.TrajectoryConfig(target_velocity=1.0))
+controller = robotnav.Controller(
+    robotnav.ControllerConfig(controller="stanley"))
+simulation = robotnav.simulate(
+    robotnav.RobotState(1.0, 1.0), trajectory, controller, max_time=5.0)
+print(simulation.metrics.max_cross_track)
+```
+
+See `examples/python/quick_plan.py` and `examples/python/track_path.py` for
+complete runnable examples.
+
+For source-tree binding builds, include `build/python-build/python` in
 `PYTHONPATH`. The facade is also included in the Python wheel.
 
 ```bash

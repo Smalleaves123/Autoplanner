@@ -133,6 +133,12 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  ENVIRONMENT
                                  "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
                                  TIMEOUT 60)
+            robotnav_add_python_test(test_python_robotnav_control
+                                     robotnav/tests/test_control.py)
+            set_tests_properties(test_python_robotnav_control PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 60)
         endif()
         robotnav_add_python_test(
             test_python_perception_replay
