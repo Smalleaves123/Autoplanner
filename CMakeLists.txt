@@ -126,6 +126,14 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  autoplanner/tests/test_perception_mapping.py)
         robotnav_add_python_test(test_python_local_planner_benchmark
                                  autoplanner/tests/test_local_planner_benchmark.py)
+        if(BUILD_PYTHON_BINDINGS)
+            robotnav_add_python_test(test_python_robotnav_facade
+                                     robotnav/tests/test_planning.py)
+            set_tests_properties(test_python_robotnav_facade PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 60)
+        endif()
         robotnav_add_python_test(
             test_python_perception_replay
             autoplanner/scripts/run_perception_pipeline.py
@@ -159,4 +167,14 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
     else()
         message(STATUS "Python3 interpreter not found; skipping Python tests")
     endif()
+endif()
+
+if(BUILD_PYTHON_BINDINGS)
+    # The facade is pure Python and lives next to the compiled extension
+    # modules in the build tree, so PYTHONPATH=build/python is sufficient for
+    # source-tree binding smoke tests.
+    file(COPY "${CMAKE_SOURCE_DIR}/robotnav/python/robotnav"
+         DESTINATION "${CMAKE_BINARY_DIR}/python")
+    install(DIRECTORY robotnav/python/robotnav
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/python)
 endif()

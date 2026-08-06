@@ -153,7 +153,10 @@ PYBIND11_MODULE(_autompc, m) {
     m.def("make_straight_line", &makeStraightLine);
     m.def("load_path_csv", &loadTrajectory);
     m.def("load_path_csv_with_options", &loadTrajectoryWithOptions);
-    m.def("generate_trajectory", &generateTrajectory,
+    m.def("generate_trajectory",
+          [](const Waypoints& waypoints, const TrajectoryOptions& options) {
+              return generateTrajectory(waypoints, options);
+          },
           py::arg("waypoints"), py::arg("options") = TrajectoryOptions{});
     m.def("save_trajectory_csv", &saveTrajectoryCsv);
     m.def("arc_length", &arcLength);

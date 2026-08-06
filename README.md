@@ -203,12 +203,32 @@ when an OpenMP C++ runtime is available; builds without OpenMP remain supported.
 Python bindings are optional. Python handles orchestration and analysis while
 the planning and MPC kernels execute in C++ with the GIL released:
 
-```bash
-cmake -S . -B build-python -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_TESTS=OFF -DBUILD_PYTHON_BINDINGS=ON
-cmake --build build-python -j
+The recommended user-facing entry point is the pure-Python `robotnav` facade.
+It accepts paths or native map objects, validates common inputs, and returns a
+structured `PlanResult` while keeping the algorithm execution in C++:
 
-PYTHONPATH=build-python/python python - <<'PY'
+```python
+from robotnav import PlannerConfig, plan
+
+result = plan(
+    "autoplanner/data/maps/simple_50x50.txt",
+    start=(1, 1), goal=(20, 20),
+    config=PlannerConfig(
+        planner="improved_astar",
+        robot_radius=0.0,
+    ),
+)
+print(result.success, result.status_code, result.path_length)
+```
+
+For source-tree binding builds, include `build-python/python` in
+`PYTHONPATH`. The facade is also included in the Python wheel.
+
+```bash
+cmake --preset python
+cmake --build --preset python
+
+PYTHONPATH=build/python-build/python python - <<'PY'
 import autoplanner
 import autompc
 

@@ -44,10 +44,12 @@ minimum-version = "build-system.requires"
 wheel.packages = [
     "autoplanner/python/autoplanner",
     "autompc/python/autompc",
+    "robotnav/python/robotnav",
 ]
 sdist.include = [
     "autoplanner/python/**",
     "autompc/python/**",
+    "robotnav/python/**",
 ]
 
 [tool.scikit-build.cmake]

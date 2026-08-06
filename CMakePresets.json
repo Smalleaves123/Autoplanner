@@ -46,6 +46,17 @@
         "BUILD_PYTHON_TESTS": "ON",
         "ROBOTNAV_REQUIRE_TEST_DEPENDENCIES": "ON"
       }
+    },
+    {
+      "name": "python",
+      "displayName": "RobotNav Python Bindings",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build/python-build",
+      "cacheVariables": {
+        "BUILD_TESTS": "OFF",
+        "BUILD_PYTHON_TESTS": "OFF",
+        "BUILD_PYTHON_BINDINGS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -67,6 +78,11 @@
     {
       "name": "test",
       "configurePreset": "test",
+      "jobs": 4
+    },
+    {
+      "name": "python",
+      "configurePreset": "python",
       "jobs": 4
     }
   ],
