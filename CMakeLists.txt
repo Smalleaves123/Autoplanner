@@ -60,6 +60,10 @@ target_include_directories(robotnav_pipeline PUBLIC
 target_link_libraries(robotnav_pipeline PUBLIC autoplanner autompc)
 target_compile_options(robotnav_pipeline PRIVATE -Wall -Wextra -Wpedantic)
 
+if(BUILD_PYTHON_BINDINGS)
+    add_subdirectory(robotnav/python/bindings)
+endif()
+
 # MPPI rollouts are independent. Use OpenMP when it is available, while
 # keeping the default build portable on machines without an OpenMP runtime.
 find_package(OpenMP QUIET)
@@ -139,6 +143,12 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  ENVIRONMENT
                                  "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
                                  TIMEOUT 60)
+            robotnav_add_python_test(test_python_robotnav_dynamic
+                                     robotnav/tests/test_dynamic.py)
+            set_tests_properties(test_python_robotnav_dynamic PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 120)
         endif()
         robotnav_add_python_test(
             test_python_perception_replay

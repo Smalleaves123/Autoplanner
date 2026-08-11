@@ -239,6 +239,26 @@ print(simulation.metrics.max_cross_track)
 See `examples/python/quick_plan.py` and `examples/python/track_path.py` for
 complete runnable examples.
 
+Dynamic navigation is also available without invoking the CLI:
+
+```python
+result = robotnav.run_dynamic(
+    "autoplanner/data/maps/simple_50x50.txt",
+    (1, 1), (12, 12),
+    robotnav.DynamicConfig(
+        planner="space_time_astar",
+        controller="stanley",
+        frames=12,
+        steps_per_frame=30,
+        moving_obstacles=(robotnav.MovingObstacle(
+            0, 10, 7, 4, 0, 1, radius=0.5),),
+    ),
+)
+print(result.status_code, result.metrics["goal_reached"])
+```
+
+See `examples/python/dynamic_nav.py` for a complete scenario.
+
 For source-tree binding builds, include `build/python-build/python` in
 `PYTHONPATH`. The facade is also included in the Python wheel.
 

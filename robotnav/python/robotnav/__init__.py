@@ -28,6 +28,13 @@ from .control import (
     generate_trajectory,
     simulate,
 )
+from .dynamic import (
+    DynamicConfig,
+    DynamicResult,
+    MovingObstacle,
+    ObstacleUpdate,
+    run_dynamic,
+)
 
 __all__ = [
     "BackendUnavailableError",
@@ -48,6 +55,11 @@ __all__ = [
     "TrajectoryResult",
     "generate_trajectory",
     "simulate",
+    "DynamicConfig",
+    "DynamicResult",
+    "MovingObstacle",
+    "ObstacleUpdate",
+    "run_dynamic",
 ]
 
 __version__ = "0.1.0"
