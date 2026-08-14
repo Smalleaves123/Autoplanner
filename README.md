@@ -259,6 +259,21 @@ print(result.status_code, result.metrics["goal_reached"])
 
 See `examples/python/dynamic_nav.py` for a complete scenario.
 
+Dynamic inputs and outputs can be stored as dependency-free JSON replay
+artifacts for batch evaluation or another machine:
+
+```python
+scenario = robotnav.DynamicScenario(
+    "autoplanner/data/maps/simple_50x50.txt", (1, 1), (12, 12), config)
+scenario.save_json("results/scenario.json")
+result = robotnav.run_dynamic_scenario(
+    robotnav.DynamicScenario.load_json("results/scenario.json"))
+result.save_json("results/result.json")
+```
+
+Both formats carry `schema_version` and are intended to remain stable across
+patch releases.
+
 For source-tree binding builds, include `build/python-build/python` in
 `PYTHONPATH`. The facade is also included in the Python wheel.
 

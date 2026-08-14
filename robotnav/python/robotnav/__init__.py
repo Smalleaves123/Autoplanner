@@ -31,9 +31,11 @@ from .control import (
 from .dynamic import (
     DynamicConfig,
     DynamicResult,
+    DynamicScenario,
     MovingObstacle,
     ObstacleUpdate,
     run_dynamic,
+    run_dynamic_scenario,
 )
 
 __all__ = [
@@ -57,9 +59,11 @@ __all__ = [
     "simulate",
     "DynamicConfig",
     "DynamicResult",
+    "DynamicScenario",
     "MovingObstacle",
     "ObstacleUpdate",
     "run_dynamic",
+    "run_dynamic_scenario",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.6.0"
