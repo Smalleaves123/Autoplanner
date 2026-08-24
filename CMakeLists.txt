@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(RobotNav VERSION 0.5.0 LANGUAGES CXX)
+project(RobotNav VERSION 0.6.0 LANGUAGES CXX)
 
 # Build both sub-projects.
 # Disable tests in sub-projects with -DBUILD_TESTS=OFF if desired.

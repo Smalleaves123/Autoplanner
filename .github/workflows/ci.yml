@@ -68,6 +68,7 @@ jobs:
           python - <<'PY'
           import autoplanner
           import autompc
+          import robotnav
 
           grid = autoplanner.GridMap()
           assert grid.load_from_txt("autoplanner/data/maps/simple_50x50.txt")
@@ -77,5 +78,23 @@ jobs:
           assert result.success, result.message
           assert result.path_length > 0.0
           assert hasattr(autompc, "generate_trajectory")
+          assert robotnav.__version__ == "0.6.0"
+
+          scenario = robotnav.DynamicScenario(
+              "autoplanner/data/maps/simple_50x50.txt",
+              (1, 1), (8, 8),
+              robotnav.DynamicConfig(
+                  frames=1,
+                  steps_per_frame=2,
+                  auto_insert_obstacles=False,
+              ),
+          )
+          result = robotnav.run_dynamic_scenario(scenario)
+          assert result.trace
+          with open("/tmp/robotnav-result.json", "w", encoding="utf-8") as stream:
+              import json
+              json.dump(result.to_dict(), stream)
+          restored = robotnav.DynamicResult.load_json("/tmp/robotnav-result.json")
+          assert restored.status_code == result.status_code
           print("python package smoke test passed")
           PY
