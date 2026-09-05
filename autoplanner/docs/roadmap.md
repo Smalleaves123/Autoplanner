@@ -32,7 +32,7 @@ integration surfaces.
   recovery, safe stop, and terminal failure.
 - [x] Add bounded retry and cooldown policies for global replanning.
 - [x] Record state transitions and failure causes in trace and JSON artifacts.
-- [ ] Add deterministic crossing, overtaking, blocked-corridor, and disappearing
+- [x] Add deterministic crossing, overtaking, blocked-corridor, and disappearing
   obstacle regression scenarios.
 - [ ] Enforce one time base across prediction, local rollout, simulation, and
   safety supervision.
