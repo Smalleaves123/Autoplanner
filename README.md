@@ -461,6 +461,10 @@ sampling-noise, workspace-expansion, and workspace-reuse diagnostics. A
 non-zero post-warm-up workspace-expansion count makes it fail. This check is
 limited to the rollout buffers owned by MPPI; it does not claim to intercept
 allocations made by the C++ runtime, OpenMP, or other dependencies.
+It also reports whether the build is using the serial or OpenMP rollout
+backend and its maximum worker count. See the
+[MPPI performance baseline](autoplanner/docs/mppi_performance.md) for the
+recorded CPU measurements and the SIMD/GPU adoption criteria.
 
 For tracked obstacles with covariance, MPPI can also add an occupancy-risk
 cost using `local_planner.mppi.dynamic_probability_weight`. The probability

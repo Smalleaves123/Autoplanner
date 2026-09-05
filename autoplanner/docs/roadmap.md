@@ -44,7 +44,7 @@ integration surfaces.
 - [x] Add configurable probability/risk costs without weakening hard collision
   rejection.
 - [x] Reuse rollout buffers and benchmark allocation-free control cycles.
-- [ ] Evaluate SIMD and optional GPU acceleration after a CPU profiling baseline.
+- [x] Evaluate SIMD and optional GPU acceleration after a CPU profiling baseline.
 
 ## Phase 4: Middleware-independent perception
 

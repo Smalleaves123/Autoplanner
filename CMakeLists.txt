@@ -16,6 +16,8 @@ set(ROBOTNAV_SANITIZERS "address;undefined" CACHE STRING
 option(ROBOTNAV_ENABLE_CLANG_TIDY "Run clang-tidy during C++ compilation" OFF)
 option(ROBOTNAV_BUILD_QUALITY_TARGETS
        "Build format and quality helper targets" ON)
+option(ROBOTNAV_ENABLE_OPENMP
+       "Use OpenMP to evaluate MPPI rollouts when available" ON)
 
 if(BUILD_TESTS)
     enable_testing()
@@ -69,10 +71,14 @@ endif()
 
 # MPPI rollouts are independent. Use OpenMP when it is available, while
 # keeping the default build portable on machines without an OpenMP runtime.
-find_package(OpenMP QUIET)
-if(OpenMP_CXX_FOUND)
-    target_link_libraries(robotnav_pipeline PUBLIC OpenMP::OpenMP_CXX)
-    target_compile_definitions(robotnav_pipeline PRIVATE ROBOTNAV_HAS_OPENMP=1)
+set(ROBOTNAV_OPENMP_ENABLED OFF)
+if(ROBOTNAV_ENABLE_OPENMP)
+    find_package(OpenMP QUIET)
+    if(OpenMP_CXX_FOUND)
+        set(ROBOTNAV_OPENMP_ENABLED ON)
+        target_link_libraries(robotnav_pipeline PUBLIC OpenMP::OpenMP_CXX)
+        target_compile_definitions(robotnav_pipeline PRIVATE ROBOTNAV_HAS_OPENMP=1)
+    endif()
 endif()
 
 install(TARGETS robotnav_pipeline
@@ -101,6 +107,9 @@ set_target_properties(dynamic_navigation_pipeline_cli PROPERTIES
 
 add_executable(mppi_benchmark apps/mppi_benchmark.cpp)
 target_link_libraries(mppi_benchmark PRIVATE robotnav_pipeline)
+if(ROBOTNAV_OPENMP_ENABLED)
+    target_compile_definitions(mppi_benchmark PRIVATE ROBOTNAV_HAS_OPENMP=1)
+endif()
 set_target_properties(mppi_benchmark PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps
 )

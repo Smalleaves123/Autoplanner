@@ -15,6 +15,10 @@
 #include "autompc/core/trajectory.h"
 #include "robotnav/mppi_local_planner.h"
 
+#ifdef ROBOTNAV_HAS_OPENMP
+#include <omp.h>
+#endif
+
 namespace {
 
 class FreeSpaceCollisionChecker final
@@ -164,15 +168,33 @@ int main(int argc, char** argv) {
             static_cast<double>(latency_ms.size());
         const double iteration_count =
             static_cast<double>(benchmark_options.iterations);
+        const double rollout_steps_per_cycle =
+            static_cast<double>(benchmark_options.rollouts) *
+            static_cast<double>(benchmark_options.horizon);
+        const double million_rollout_steps_per_second =
+            rollout_steps_per_cycle / mean_latency / 1000.0;
+
+#ifdef ROBOTNAV_HAS_OPENMP
+        const char* parallel_backend = "openmp";
+        const int maximum_worker_threads = omp_get_max_threads();
+#else
+        const char* parallel_backend = "serial";
+        const int maximum_worker_threads = 1;
+#endif
 
         std::cout << std::fixed << std::setprecision(3)
                   << "iterations: " << benchmark_options.iterations << '\n'
                   << "rollouts: " << benchmark_options.rollouts << '\n'
                   << "horizon: " << benchmark_options.horizon << '\n'
+                  << "parallel_backend: " << parallel_backend << '\n'
+                  << "maximum_worker_threads: " << maximum_worker_threads
+                  << '\n'
                   << "mean_latency_ms: " << mean_latency << '\n'
                   << "p50_latency_ms: " << percentile(latency_ms, 0.50) << '\n'
                   << "p95_latency_ms: " << percentile(latency_ms, 0.95) << '\n'
                   << "p99_latency_ms: " << percentile(latency_ms, 0.99) << '\n'
+                  << "million_rollout_steps_per_second: "
+                  << million_rollout_steps_per_second << '\n'
                   << "workspace_allocation_count: "
                   << workspace_allocations << '\n'
                   << "workspace_reuse_count: " << workspace_reuses << '\n'
