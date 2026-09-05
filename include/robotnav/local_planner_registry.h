@@ -26,6 +26,9 @@ struct LocalPlannerDecision {
     std::size_t dynamic_collision_rejections = 0;
     double minimum_dynamic_clearance = 0.0;
     bool warm_started = false;
+    double effective_sample_size = 0.0;
+    double effective_sample_ratio = 0.0;
+    double sampling_noise_scale = 1.0;
 };
 
 class LocalPlanner {

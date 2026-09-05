@@ -357,6 +357,7 @@ TEST(MppiLocalPlannerTest, SamplesDeterministicallyAndAvoidsPrediction) {
     options.steering_noise = 0.25;
     options.dynamic_collision_samples = 5;
     options.warm_start = false;
+    options.adaptive_sampling = false;
     robotnav::MppiLocalPlanner planner(checker, simulation, options);
 
     const auto trajectory = autompc::makeStraightLine(
@@ -409,6 +410,42 @@ TEST(MppiLocalPlannerTest, WarmStartsFromPreviousOptimalRollout) {
     EXPECT_FALSE(first.warm_started);
     EXPECT_TRUE(second.warm_started);
     EXPECT_FALSE(reset.warm_started);
+}
+
+TEST(MppiLocalPlannerTest, AdaptsNoiseAndReportsEffectiveSampleSize) {
+    const auto map = loadSimpleMap();
+    autoplanner::GridCollisionChecker checker(map);
+    autompc::SimulationOptions simulation;
+    simulation.dt = 0.1;
+    robotnav::MppiOptions options;
+    options.prediction_time = 0.8;
+    options.horizon = 8;
+    options.rollouts = 32;
+    options.warm_start = false;
+    options.adaptive_sampling = true;
+    options.target_effective_sample_ratio = 1.0;
+    options.sampling_adaptation_gain = 0.5;
+    options.minimum_noise_scale = 0.25;
+    options.maximum_noise_scale = 2.0;
+    robotnav::MppiLocalPlanner planner(checker, simulation, options);
+    const auto trajectory = autompc::makeStraightLine(
+        1.0, 1.0, 8.0, 1.0, 1.0, 30);
+
+    const auto first = planner.computeCommand(
+        {1.0, 1.0, 0.0, 0.0}, 0.0, trajectory, {1.0, 0.0});
+    const auto second = planner.computeCommand(
+        {1.0, 1.0, 0.0, 0.0}, 0.0, trajectory, {1.0, 0.0});
+
+    ASSERT_TRUE(first.feasible);
+    ASSERT_TRUE(second.feasible);
+    EXPECT_GT(first.effective_sample_size, 0.0);
+    EXPECT_LE(first.effective_sample_size,
+              static_cast<double>(first.feasible_rollouts));
+    EXPECT_GT(first.effective_sample_ratio, 0.0);
+    EXPECT_LE(first.effective_sample_ratio, 1.0);
+    EXPECT_DOUBLE_EQ(first.sampling_noise_scale, 1.0);
+    EXPECT_LT(second.sampling_noise_scale, first.sampling_noise_scale);
+    EXPECT_GE(second.sampling_noise_scale, options.minimum_noise_scale);
 }
 
 TEST(SafetySupervisorTest, RejectsInvalidTrajectoryAndCommand) {
@@ -647,6 +684,9 @@ TEST(NavigationPipelineTest, SupportsMppiLocalPlanner) {
     EXPECT_EQ(result.metrics.local_planner, "mppi");
     EXPECT_GT(result.metrics.local_planner_rollouts, 0u);
     EXPECT_GT(result.metrics.local_planner_warm_start_count, 0u);
+    EXPECT_GT(result.metrics.mppi_diagnostic_count, 0u);
+    EXPECT_GT(result.metrics.mean_mppi_effective_sample_size, 0.0);
+    EXPECT_GT(result.metrics.mean_mppi_effective_sample_ratio, 0.0);
     EXPECT_GT(result.metrics.local_planner_time_ms, 0.0);
 }
 
@@ -960,6 +1000,9 @@ TEST(DynamicNavigationPipelineTest, SupportsMppiWithMovingObstacles) {
     EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
     EXPECT_GT(result.metrics.local_planner_rollouts, 0u);
     EXPECT_GT(result.metrics.local_planner_warm_start_count, 0u);
+    EXPECT_GT(result.metrics.mppi_diagnostic_count, 0u);
+    EXPECT_GT(result.metrics.mean_mppi_effective_sample_size, 0.0);
+    EXPECT_GT(result.metrics.mean_mppi_effective_sample_ratio, 0.0);
     EXPECT_GT(result.metrics.local_planner_time_ms, 0.0);
     EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
     EXPECT_TRUE(result.metrics.goal_reached);
@@ -1065,6 +1108,11 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "    dynamic_clearance: 0.6\n"
                << "    warm_start: false\n"
                << "    warm_start_blend: 0.4\n"
+               << "    adaptive_sampling: false\n"
+               << "    target_effective_sample_ratio: 0.6\n"
+               << "    sampling_adaptation_gain: 0.2\n"
+               << "    minimum_noise_scale: 0.4\n"
+               << "    maximum_noise_scale: 1.8\n"
                << "dynamic_prediction:\n"
                << "  risk_weight: 2.5\n"
                << "  risk_clearance: 1.2\n"
@@ -1109,6 +1157,13 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.dynamic_clearance, 0.6);
     EXPECT_FALSE(scenario.pipeline.mppi_options.warm_start);
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.warm_start_blend, 0.4);
+    EXPECT_FALSE(scenario.pipeline.mppi_options.adaptive_sampling);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.mppi_options.target_effective_sample_ratio, 0.6);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.mppi_options.sampling_adaptation_gain, 0.2);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.minimum_noise_scale, 0.4);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.maximum_noise_scale, 1.8);
     EXPECT_DOUBLE_EQ(
         scenario.pipeline.dynamic_prediction_risk_weight, 2.5);
     EXPECT_DOUBLE_EQ(

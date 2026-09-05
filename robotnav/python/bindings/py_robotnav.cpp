@@ -140,6 +140,14 @@ py::dict runDynamic(
         result.metrics.dynamic_local_collision_rejections;
     metrics["local_planner_warm_start_count"] =
         result.metrics.local_planner_warm_start_count;
+    metrics["mppi_diagnostic_count"] =
+        result.metrics.mppi_diagnostic_count;
+    metrics["mean_mppi_effective_sample_size"] =
+        result.metrics.mean_mppi_effective_sample_size;
+    metrics["mean_mppi_effective_sample_ratio"] =
+        result.metrics.mean_mppi_effective_sample_ratio;
+    metrics["mppi_sampling_noise_scale"] =
+        result.metrics.mppi_sampling_noise_scale;
     metrics["collision_steps"] = result.metrics.collision_steps;
     metrics["state_transition_count"] =
         result.metrics.state_transition_count;

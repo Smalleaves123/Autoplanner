@@ -32,6 +32,7 @@ class DynamicFacadeTests(unittest.TestCase):
         self.assertIn("replanning_count", result.metrics)
         self.assertIn("final_state", result.metrics)
         self.assertIn("local_planner_warm_start_count", result.metrics)
+        self.assertIn("mean_mppi_effective_sample_ratio", result.metrics)
         self.assertIn("navigation_state", result.trace[0])
         self.assertTrue(result.state_transitions)
         self.assertIn("reason", result.state_transitions[0])

@@ -31,6 +31,11 @@ struct MppiOptions {
     unsigned int random_seed = 42;
     bool warm_start = true;
     double warm_start_blend = 0.25;
+    bool adaptive_sampling = true;
+    double target_effective_sample_ratio = 0.5;
+    double sampling_adaptation_gain = 0.1;
+    double minimum_noise_scale = 0.5;
+    double maximum_noise_scale = 2.0;
 };
 
 struct MppiDecision {
@@ -41,6 +46,9 @@ struct MppiDecision {
     std::size_t dynamic_collision_rejections = 0;
     double minimum_dynamic_clearance = 0.0;
     bool warm_started = false;
+    double effective_sample_size = 0.0;
+    double effective_sample_ratio = 0.0;
+    double sampling_noise_scale = 1.0;
 };
 
 class MppiLocalPlanner {
@@ -64,6 +72,7 @@ private:
     MppiOptions options_;
     mutable std::mutex warm_start_mutex_;
     mutable std::vector<autompc::Control> previous_optimal_controls_;
+    mutable double sampling_noise_scale_ = 1.0;
 };
 
 }  // namespace robotnav

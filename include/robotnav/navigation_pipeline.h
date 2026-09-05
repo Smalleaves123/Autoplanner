@@ -32,6 +32,10 @@ struct PipelineMetrics {
     std::size_t local_planner_adjustments = 0;
     std::size_t local_planner_rollouts = 0;
     std::size_t local_planner_warm_start_count = 0;
+    std::size_t mppi_diagnostic_count = 0;
+    double mean_mppi_effective_sample_size = 0.0;
+    double mean_mppi_effective_sample_ratio = 0.0;
+    double mppi_sampling_noise_scale = 1.0;
     std::size_t local_planner_collision_rejections = 0;
     double local_planner_time_ms = 0.0;
     double minimum_dynamic_obstacle_clearance = 0.0;

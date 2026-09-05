@@ -64,3 +64,10 @@ local_planner:
     dynamic_obstacle_margin: 0.0
     dynamic_collision_samples: 3
     random_seed: 42
+    warm_start: true
+    warm_start_blend: 0.25
+    adaptive_sampling: true
+    target_effective_sample_ratio: 0.5
+    sampling_adaptation_gain: 0.1
+    minimum_noise_scale: 0.5
+    maximum_noise_scale: 2.0

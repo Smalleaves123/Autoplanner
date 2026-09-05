@@ -207,6 +207,21 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.mppi_options.warm_start_blend = loader.getDouble(
         "local_planner.mppi.warm_start_blend",
         pipeline.mppi_options.warm_start_blend);
+    pipeline.mppi_options.adaptive_sampling = loader.getBool(
+        "local_planner.mppi.adaptive_sampling",
+        pipeline.mppi_options.adaptive_sampling);
+    pipeline.mppi_options.target_effective_sample_ratio = loader.getDouble(
+        "local_planner.mppi.target_effective_sample_ratio",
+        pipeline.mppi_options.target_effective_sample_ratio);
+    pipeline.mppi_options.sampling_adaptation_gain = loader.getDouble(
+        "local_planner.mppi.sampling_adaptation_gain",
+        pipeline.mppi_options.sampling_adaptation_gain);
+    pipeline.mppi_options.minimum_noise_scale = loader.getDouble(
+        "local_planner.mppi.minimum_noise_scale",
+        pipeline.mppi_options.minimum_noise_scale);
+    pipeline.mppi_options.maximum_noise_scale = loader.getDouble(
+        "local_planner.mppi.maximum_noise_scale",
+        pipeline.mppi_options.maximum_noise_scale);
     const int mppi_seed = loader.getInt(
         "local_planner.mppi.random_seed",
         static_cast<int>(pipeline.mppi_options.random_seed));

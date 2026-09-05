@@ -28,7 +28,10 @@ public:
                 0,
                 decision.dynamic_collision_rejections,
                 decision.minimum_dynamic_clearance,
-                false};
+                false,
+                0.0,
+                0.0,
+                1.0};
     }
 
 private:
@@ -62,7 +65,10 @@ public:
                 decision.feasible_rollouts,
                 decision.dynamic_collision_rejections,
                 decision.minimum_dynamic_clearance,
-                decision.warm_started};
+                decision.warm_started,
+                decision.effective_sample_size,
+                decision.effective_sample_ratio,
+                decision.sampling_noise_scale};
     }
 
 private:

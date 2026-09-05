@@ -40,7 +40,7 @@ integration surfaces.
 ## Phase 3: Risk-aware MPPI
 
 - [x] Warm-start each control sequence from the previous optimal rollout.
-- [ ] Add adaptive sampling variance and effective-sample diagnostics.
+- [x] Add adaptive sampling variance and effective-sample diagnostics.
 - [ ] Add configurable probability/risk costs without weakening hard collision
   rejection.
 - [ ] Reuse rollout buffers and benchmark allocation-free control cycles.

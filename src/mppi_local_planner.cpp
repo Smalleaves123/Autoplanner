@@ -165,7 +165,16 @@ MppiDecision MppiLocalPlanner::computeCommand(
         options_.dynamic_obstacle_margin < 0.0 ||
         !std::isfinite(options_.warm_start_blend) ||
         options_.warm_start_blend < 0.0 ||
-        options_.warm_start_blend > 1.0) {
+        options_.warm_start_blend > 1.0 ||
+        !std::isfinite(options_.target_effective_sample_ratio) ||
+        options_.target_effective_sample_ratio <= 0.0 ||
+        options_.target_effective_sample_ratio > 1.0 ||
+        !std::isfinite(options_.sampling_adaptation_gain) ||
+        options_.sampling_adaptation_gain < 0.0 ||
+        !std::isfinite(options_.minimum_noise_scale) ||
+        options_.minimum_noise_scale <= 0.0 ||
+        !std::isfinite(options_.maximum_noise_scale) ||
+        options_.maximum_noise_scale < options_.minimum_noise_scale) {
         return decision;
     }
 
@@ -203,9 +212,14 @@ MppiDecision MppiLocalPlanner::computeCommand(
     const auto rollout_count = static_cast<std::size_t>(options_.rollouts);
     const auto horizon = static_cast<std::size_t>(options_.horizon);
     std::vector<autompc::Control> base_controls(horizon, nominal);
-    if (options_.warm_start) {
+    double sampling_noise_scale = 1.0;
+    {
         std::lock_guard<std::mutex> lock(warm_start_mutex_);
-        if (previous_optimal_controls_.size() == horizon) {
+        sampling_noise_scale = std::clamp(
+            sampling_noise_scale_, options_.minimum_noise_scale,
+            options_.maximum_noise_scale);
+        if (options_.warm_start &&
+            previous_optimal_controls_.size() == horizon) {
             decision.warm_started = true;
             for (std::size_t step = 0; step < horizon; ++step) {
                 const auto source = std::min(step + 1, horizon - 1);
@@ -219,12 +233,13 @@ MppiDecision MppiLocalPlanner::computeCommand(
             }
         }
     }
+    decision.sampling_noise_scale = sampling_noise_scale;
     std::vector<autompc::Control> sampled_controls(rollout_count * horizon);
     std::mt19937 generator(options_.random_seed);
     std::normal_distribution<double> velocity_distribution(
-        0.0, options_.velocity_noise);
+        0.0, options_.velocity_noise * sampling_noise_scale);
     std::normal_distribution<double> steering_distribution(
-        0.0, options_.steering_noise);
+        0.0, options_.steering_noise * sampling_noise_scale);
     const double desired_clearance = std::max(
         options_.dynamic_clearance,
         std::max(options_.dynamic_obstacle_margin,
@@ -355,6 +370,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
 
     const double minimum_cost = decision.score;
     double weight_sum = 0.0;
+    double squared_weight_sum = 0.0;
     std::vector<autompc::Control> weighted_controls(horizon);
     for (std::size_t rollout_index = 0;
          rollout_index < rollout_results.size(); ++rollout_index) {
@@ -365,6 +381,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
         const double weight = std::exp(std::max(-700.0, exponent));
         if (!std::isfinite(weight)) continue;
         weight_sum += weight;
+        squared_weight_sum += weight * weight;
         for (std::size_t step = 0; step < horizon; ++step) {
             const auto& command = sampled_controls[
                 rollout_index * horizon + step];
@@ -372,7 +389,16 @@ MppiDecision MppiLocalPlanner::computeCommand(
             weighted_controls[step].steering += weight * command.steering;
         }
     }
-    if (weight_sum <= 0.0 || !std::isfinite(weight_sum)) return decision;
+    if (weight_sum <= 0.0 || !std::isfinite(weight_sum) ||
+        squared_weight_sum <= 0.0 || !std::isfinite(squared_weight_sum)) {
+        return decision;
+    }
+    decision.effective_sample_size =
+        weight_sum * weight_sum / squared_weight_sum;
+    decision.effective_sample_ratio = std::clamp(
+        decision.effective_sample_size /
+            static_cast<double>(decision.feasible_rollouts),
+        0.0, 1.0);
 
     std::vector<autompc::Control> optimized_controls(horizon);
     for (std::size_t step = 0; step < horizon; ++step) {
@@ -415,6 +441,18 @@ MppiDecision MppiLocalPlanner::computeCommand(
             previous_optimal_controls_.assign(
                 begin, begin + static_cast<std::ptrdiff_t>(horizon));
         }
+    }
+    if (options_.adaptive_sampling) {
+        const double adjustment = std::exp(
+            options_.sampling_adaptation_gain *
+            (decision.effective_sample_ratio -
+             options_.target_effective_sample_ratio));
+        const double next_scale = std::clamp(
+            sampling_noise_scale * adjustment,
+            options_.minimum_noise_scale,
+            options_.maximum_noise_scale);
+        std::lock_guard<std::mutex> lock(warm_start_mutex_);
+        sampling_noise_scale_ = next_scale;
     }
     return decision;
 }

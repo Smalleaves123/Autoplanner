@@ -444,7 +444,19 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
          config.pipeline.mppi_options.dynamic_obstacle_margin < 0.0 ||
          !std::isfinite(config.pipeline.mppi_options.warm_start_blend) ||
          config.pipeline.mppi_options.warm_start_blend < 0.0 ||
-         config.pipeline.mppi_options.warm_start_blend > 1.0)) {
+         config.pipeline.mppi_options.warm_start_blend > 1.0 ||
+         !std::isfinite(
+             config.pipeline.mppi_options.target_effective_sample_ratio) ||
+         config.pipeline.mppi_options.target_effective_sample_ratio <= 0.0 ||
+         config.pipeline.mppi_options.target_effective_sample_ratio > 1.0 ||
+         !std::isfinite(
+             config.pipeline.mppi_options.sampling_adaptation_gain) ||
+         config.pipeline.mppi_options.sampling_adaptation_gain < 0.0 ||
+         !std::isfinite(config.pipeline.mppi_options.minimum_noise_scale) ||
+         config.pipeline.mppi_options.minimum_noise_scale <= 0.0 ||
+         !std::isfinite(config.pipeline.mppi_options.maximum_noise_scale) ||
+         config.pipeline.mppi_options.maximum_noise_scale <
+             config.pipeline.mppi_options.minimum_noise_scale)) {
         return fail(StatusCode::InvalidConfiguration,
                     "invalid MPPI local planner configuration");
     }
@@ -915,6 +927,23 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 if (decision.warm_started) {
                     ++result.metrics.local_planner_warm_start_count;
                 }
+                if (std::isfinite(decision.effective_sample_size) &&
+                    decision.effective_sample_size > 0.0 &&
+                    std::isfinite(decision.effective_sample_ratio)) {
+                    ++result.metrics.mppi_diagnostic_count;
+                    const double samples = static_cast<double>(
+                        result.metrics.mppi_diagnostic_count);
+                    result.metrics.mean_mppi_effective_sample_size +=
+                        (decision.effective_sample_size -
+                         result.metrics.mean_mppi_effective_sample_size) /
+                        samples;
+                    result.metrics.mean_mppi_effective_sample_ratio +=
+                        (decision.effective_sample_ratio -
+                         result.metrics.mean_mppi_effective_sample_ratio) /
+                        samples;
+                    result.metrics.mppi_sampling_noise_scale =
+                        decision.sampling_noise_scale;
+                }
                 if (std::isfinite(decision.minimum_dynamic_clearance)) {
                     if (result.metrics.minimum_dynamic_obstacle_clearance == 0.0) {
                         result.metrics.minimum_dynamic_obstacle_clearance =
@@ -1073,6 +1102,15 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << result.metrics.local_planner_rollouts << ",\n"
            << "  \"local_planner_warm_start_count\": "
            << result.metrics.local_planner_warm_start_count << ",\n"
+           << "  \"mppi_diagnostic_count\": "
+           << result.metrics.mppi_diagnostic_count << ",\n"
+           << "  \"mean_mppi_effective_sample_size\": ";
+    writeJsonNumber(output, result.metrics.mean_mppi_effective_sample_size);
+    output << ",\n  \"mean_mppi_effective_sample_ratio\": ";
+    writeJsonNumber(output, result.metrics.mean_mppi_effective_sample_ratio);
+    output << ",\n  \"mppi_sampling_noise_scale\": ";
+    writeJsonNumber(output, result.metrics.mppi_sampling_noise_scale);
+    output << ",\n"
            << "  \"external_update_count\": "
            << result.metrics.external_update_count << ",\n"
            << "  \"moving_obstacle_update_count\": "
