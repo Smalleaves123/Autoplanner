@@ -211,6 +211,8 @@ PipelineResult NavigationPipeline::run(
          config.mppi_options.dynamic_collision_samples <= 0 ||
          !std::isfinite(config.mppi_options.dynamic_clearance) ||
          config.mppi_options.dynamic_clearance < 0.0 ||
+         !std::isfinite(config.mppi_options.dynamic_probability_weight) ||
+         config.mppi_options.dynamic_probability_weight < 0.0 ||
          !std::isfinite(config.mppi_options.dynamic_obstacle_margin) ||
          config.mppi_options.dynamic_obstacle_margin < 0.0 ||
          !std::isfinite(config.mppi_options.warm_start_blend) ||
@@ -515,6 +517,9 @@ PipelineResult NavigationPipeline::run(
                      result.metrics.mean_mppi_effective_sample_ratio) / samples;
                 result.metrics.mppi_sampling_noise_scale =
                     decision.sampling_noise_scale;
+                result.metrics.maximum_mppi_collision_probability = std::max(
+                    result.metrics.maximum_mppi_collision_probability,
+                    decision.maximum_collision_probability);
             }
             result.metrics.local_planner_collision_rejections +=
                 decision.dynamic_collision_rejections;
@@ -649,6 +654,9 @@ bool savePipelineMetricsJson(const PipelineResult& result,
     writeJsonNumber(output, result.metrics.mean_mppi_effective_sample_ratio);
     output << ",\n  \"mppi_sampling_noise_scale\": ";
     writeJsonNumber(output, result.metrics.mppi_sampling_noise_scale);
+    output << ",\n  \"maximum_mppi_collision_probability\": ";
+    writeJsonNumber(
+        output, result.metrics.maximum_mppi_collision_probability);
     output << ",\n"
            << "  \"local_planner_collision_rejections\": "
            << result.metrics.local_planner_collision_rejections << ",\n"

@@ -29,6 +29,7 @@ struct LocalPlannerDecision {
     double effective_sample_size = 0.0;
     double effective_sample_ratio = 0.0;
     double sampling_noise_scale = 1.0;
+    double maximum_collision_probability = 0.0;
 };
 
 class LocalPlanner {

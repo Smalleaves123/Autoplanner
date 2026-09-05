@@ -167,6 +167,23 @@ TEST(DynamicObstaclePredictionTest, CovarianceExpansionMakesCollisionConservativ
                   nominal_obstacles, {0.25, 2.5}, 0.0));
 }
 
+TEST(DynamicObstaclePredictionTest, EstimatesCovarianceCollisionProbability) {
+    robotnav::MovingObstacle uncertain{0, 10, {2, 2}, 0, 0};
+    uncertain.covariance_xx = 1.0;
+    uncertain.covariance_yy = 1.0;
+    EXPECT_NEAR(robotnav::predictedObstacleCollisionProbability(
+                    uncertain, {4.0, 2.5}, 0.0),
+                std::exp(-0.5), 1e-9);
+    EXPECT_DOUBLE_EQ(robotnav::predictedObstacleCollisionProbability(
+                         uncertain, {2.5, 2.5}, 0.0),
+                     1.0);
+
+    robotnav::MovingObstacle certain{0, 10, {2, 2}, 0, 0};
+    EXPECT_DOUBLE_EQ(robotnav::predictedObstacleCollisionProbability(
+                         certain, {4.0, 2.5}, 0.0),
+                     0.0);
+}
+
 TEST(DynamicObstaclePredictionTest, RejectsInvalidPredictionConfiguration) {
     const auto map = loadSimpleMap();
     robotnav::DynamicPipelineConfig config;
@@ -356,6 +373,7 @@ TEST(MppiLocalPlannerTest, SamplesDeterministicallyAndAvoidsPrediction) {
     options.velocity_noise = 0.4;
     options.steering_noise = 0.25;
     options.dynamic_collision_samples = 5;
+    options.dynamic_probability_weight = 5.0;
     options.warm_start = false;
     options.adaptive_sampling = false;
     robotnav::MppiLocalPlanner planner(checker, simulation, options);
@@ -374,6 +392,7 @@ TEST(MppiLocalPlannerTest, SamplesDeterministicallyAndAvoidsPrediction) {
     EXPECT_TRUE(first.feasible);
     EXPECT_GT(first.feasible_rollouts, 0u);
     EXPECT_GT(first.dynamic_collision_rejections, 0u);
+    EXPECT_GT(first.maximum_collision_probability, 0.0);
     EXPECT_TRUE(std::isfinite(first.minimum_dynamic_clearance));
     EXPECT_DOUBLE_EQ(first.command.velocity, second.command.velocity);
     EXPECT_DOUBLE_EQ(first.command.steering, second.command.steering);
@@ -1106,6 +1125,7 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "    velocity_noise: 0.3\n"
                << "    steering_noise: 0.2\n"
                << "    dynamic_clearance: 0.6\n"
+               << "    dynamic_probability_weight: 1.7\n"
                << "    warm_start: false\n"
                << "    warm_start_blend: 0.4\n"
                << "    adaptive_sampling: false\n"
@@ -1155,6 +1175,8 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.velocity_noise, 0.3);
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.steering_noise, 0.2);
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.dynamic_clearance, 0.6);
+    EXPECT_DOUBLE_EQ(
+        scenario.pipeline.mppi_options.dynamic_probability_weight, 1.7);
     EXPECT_FALSE(scenario.pipeline.mppi_options.warm_start);
     EXPECT_DOUBLE_EQ(scenario.pipeline.mppi_options.warm_start_blend, 0.4);
     EXPECT_FALSE(scenario.pipeline.mppi_options.adaptive_sampling);

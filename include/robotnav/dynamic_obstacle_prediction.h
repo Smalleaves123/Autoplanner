@@ -149,6 +149,47 @@ inline double distanceToOccupiedCell(const autoplanner::Point2d& position,
         {static_cast<double>(cell.x), static_cast<double>(cell.y)});
 }
 
+inline double predictedObstacleCollisionProbability(
+    const MovingObstacle& obstacle,
+    const autoplanner::Point2d& position,
+    double frame,
+    double collision_margin = 0.0) {
+    autoplanner::Point2d predicted;
+    if (!predictMovingObstaclePosition(obstacle, frame, predicted)) return 0.0;
+    if (!std::isfinite(collision_margin) || collision_margin < 0.0) return 1.0;
+
+    const double delta = std::max(
+        0.0, frame - static_cast<double>(obstacle.start_frame));
+    const double nominal_radius =
+        obstacle.radius + obstacle.uncertainty_growth_per_frame * delta +
+        collision_margin;
+    const double clearance =
+        distanceToOccupiedBox(position, predicted) - nominal_radius;
+    if (clearance <= 0.0) return 1.0;
+
+    const double standard_deviation =
+        largestCovarianceStandardDeviation(obstacle, frame);
+    if (!std::isfinite(standard_deviation)) return 1.0;
+    if (standard_deviation <= 1e-12) return 0.0;
+    const double normalized = clearance / standard_deviation;
+    return std::clamp(std::exp(-0.5 * normalized * normalized), 0.0, 1.0);
+}
+
+inline double predictedObstacleCollisionProbability(
+    const std::vector<MovingObstacle>& obstacles,
+    const autoplanner::Point2d& position,
+    double frame,
+    double collision_margin = 0.0) {
+    double maximum_probability = 0.0;
+    for (const auto& obstacle : obstacles) {
+        maximum_probability = std::max(
+            maximum_probability,
+            predictedObstacleCollisionProbability(
+                obstacle, position, frame, collision_margin));
+    }
+    return maximum_probability;
+}
+
 inline double predictedObstacleClearance(
     const std::vector<MovingObstacle>& obstacles,
     const autoplanner::Point2d& position,

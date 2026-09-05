@@ -107,6 +107,7 @@ struct DynamicPipelineMetrics {
     double mean_mppi_effective_sample_size = 0.0;
     double mean_mppi_effective_sample_ratio = 0.0;
     double mppi_sampling_noise_scale = 1.0;
+    double maximum_mppi_collision_probability = 0.0;
     std::size_t external_update_count = 0;
     std::size_t moving_obstacle_update_count = 0;
     std::size_t moving_obstacle_conflict_count = 0;

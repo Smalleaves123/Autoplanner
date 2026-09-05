@@ -83,7 +83,8 @@ bool dynamicSegmentValid(const autompc::State& start,
                          double end_seconds,
                          const DynamicObstacleContext& context,
                          const MppiOptions& options,
-                         double& minimum_clearance) {
+                         double& minimum_clearance,
+                         double& maximum_probability) {
     if (context.obstacles == nullptr || context.obstacles->empty()) {
         return true;
     }
@@ -110,6 +111,11 @@ bool dynamicSegmentValid(const autompc::State& start,
         if (std::isfinite(clearance)) {
             minimum_clearance = std::min(minimum_clearance, clearance);
         }
+        maximum_probability = std::max(
+            maximum_probability,
+            predictedObstacleCollisionProbability(
+                *context.obstacles, position, frame,
+                context.collision_margin));
         if (isPredictedCollision(
                 *context.obstacles, position, frame,
                 context.collision_margin)) {
@@ -161,6 +167,8 @@ MppiDecision MppiLocalPlanner::computeCommand(
         options_.dynamic_collision_samples <= 0 ||
         !std::isfinite(options_.dynamic_clearance) ||
         options_.dynamic_clearance < 0.0 ||
+        !std::isfinite(options_.dynamic_probability_weight) ||
+        options_.dynamic_probability_weight < 0.0 ||
         !std::isfinite(options_.dynamic_obstacle_margin) ||
         options_.dynamic_obstacle_margin < 0.0 ||
         !std::isfinite(options_.warm_start_blend) ||
@@ -207,6 +215,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
         std::size_t dynamic_collision_rejections = 0;
         double minimum_dynamic_clearance =
             std::numeric_limits<double>::infinity();
+        double maximum_collision_probability = 0.0;
     };
 
     const auto rollout_count = static_cast<std::size_t>(options_.rollouts);
@@ -293,10 +302,15 @@ MppiDecision MppiLocalPlanner::computeCommand(
 
             double candidate_clearance =
                 std::numeric_limits<double>::infinity();
-            if (!dynamicSegmentValid(
-                    predicted, next, elapsed_seconds,
-                    elapsed_seconds + prediction_dt, dynamic_context,
-                    options_, candidate_clearance)) {
+            double candidate_probability = 0.0;
+            const bool dynamic_valid = dynamicSegmentValid(
+                predicted, next, elapsed_seconds,
+                elapsed_seconds + prediction_dt, dynamic_context,
+                options_, candidate_clearance, candidate_probability);
+            result.maximum_collision_probability = std::max(
+                result.maximum_collision_probability,
+                candidate_probability);
+            if (!dynamic_valid) {
                 result.minimum_dynamic_clearance = std::min(
                     result.minimum_dynamic_clearance, candidate_clearance);
                 valid = false;
@@ -331,6 +345,8 @@ MppiDecision MppiLocalPlanner::computeCommand(
                     normalizedSquared(desired_clearance - candidate_clearance,
                                       desired_clearance);
             }
+            result.cost += options_.dynamic_probability_weight *
+                candidate_probability * candidate_probability;
 
             previous = command;
             predicted = next;
@@ -357,6 +373,9 @@ MppiDecision MppiLocalPlanner::computeCommand(
         decision.minimum_dynamic_clearance = std::min(
             decision.minimum_dynamic_clearance,
             result.minimum_dynamic_clearance);
+        decision.maximum_collision_probability = std::max(
+            decision.maximum_collision_probability,
+            result.maximum_collision_probability);
         if (!result.valid) continue;
         ++decision.feasible_rollouts;
         if (result.cost < decision.score) {
@@ -420,13 +439,14 @@ MppiDecision MppiLocalPlanner::computeCommand(
         state, aggregated_steering, aggregated_command,
         simulation_options_, prediction_dt);
     double aggregate_clearance = std::numeric_limits<double>::infinity();
+    double aggregate_probability = 0.0;
     const bool aggregate_valid =
         collision_checker_.isPoseSegmentValid(
             {state.x, state.y, state.theta},
             {aggregated_next.x, aggregated_next.y, aggregated_next.theta}) &&
         dynamicSegmentValid(
             state, aggregated_next, 0.0, prediction_dt, dynamic_context,
-            options_, aggregate_clearance);
+            options_, aggregate_clearance, aggregate_probability);
     decision.command = aggregate_valid
         ? aggregated_command
         : best_first_command;

@@ -25,6 +25,7 @@ struct MppiOptions {
     double control_weight = 0.2;
     double control_rate_weight = 0.1;
     double dynamic_obstacle_weight = 1.0;
+    double dynamic_probability_weight = 0.0;
     double dynamic_clearance = 0.5;
     double dynamic_obstacle_margin = 0.0;
     int dynamic_collision_samples = 3;
@@ -49,6 +50,7 @@ struct MppiDecision {
     double effective_sample_size = 0.0;
     double effective_sample_ratio = 0.0;
     double sampling_noise_scale = 1.0;
+    double maximum_collision_probability = 0.0;
 };
 
 class MppiLocalPlanner {

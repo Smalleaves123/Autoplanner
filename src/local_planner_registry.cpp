@@ -31,7 +31,8 @@ public:
                 false,
                 0.0,
                 0.0,
-                1.0};
+                1.0,
+                0.0};
     }
 
 private:
@@ -68,7 +69,8 @@ public:
                 decision.warm_started,
                 decision.effective_sample_size,
                 decision.effective_sample_ratio,
-                decision.sampling_noise_scale};
+                decision.sampling_noise_scale,
+                decision.maximum_collision_probability};
     }
 
 private:

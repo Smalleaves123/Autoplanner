@@ -148,6 +148,8 @@ py::dict runDynamic(
         result.metrics.mean_mppi_effective_sample_ratio;
     metrics["mppi_sampling_noise_scale"] =
         result.metrics.mppi_sampling_noise_scale;
+    metrics["maximum_mppi_collision_probability"] =
+        result.metrics.maximum_mppi_collision_probability;
     metrics["collision_steps"] = result.metrics.collision_steps;
     metrics["state_transition_count"] =
         result.metrics.state_transition_count;

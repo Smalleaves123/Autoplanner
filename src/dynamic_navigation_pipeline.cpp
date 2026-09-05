@@ -440,6 +440,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
          !std::isfinite(config.pipeline.mppi_options.dynamic_clearance) ||
          config.pipeline.mppi_options.dynamic_clearance < 0.0 ||
          !std::isfinite(
+             config.pipeline.mppi_options.dynamic_probability_weight) ||
+         config.pipeline.mppi_options.dynamic_probability_weight < 0.0 ||
+         !std::isfinite(
              config.pipeline.mppi_options.dynamic_obstacle_margin) ||
          config.pipeline.mppi_options.dynamic_obstacle_margin < 0.0 ||
          !std::isfinite(config.pipeline.mppi_options.warm_start_blend) ||
@@ -943,6 +946,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                         samples;
                     result.metrics.mppi_sampling_noise_scale =
                         decision.sampling_noise_scale;
+                    result.metrics.maximum_mppi_collision_probability =
+                        std::max(
+                            result.metrics.maximum_mppi_collision_probability,
+                            decision.maximum_collision_probability);
                 }
                 if (std::isfinite(decision.minimum_dynamic_clearance)) {
                     if (result.metrics.minimum_dynamic_obstacle_clearance == 0.0) {
@@ -1110,6 +1117,9 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     writeJsonNumber(output, result.metrics.mean_mppi_effective_sample_ratio);
     output << ",\n  \"mppi_sampling_noise_scale\": ";
     writeJsonNumber(output, result.metrics.mppi_sampling_noise_scale);
+    output << ",\n  \"maximum_mppi_collision_probability\": ";
+    writeJsonNumber(
+        output, result.metrics.maximum_mppi_collision_probability);
     output << ",\n"
            << "  \"external_update_count\": "
            << result.metrics.external_update_count << ",\n"

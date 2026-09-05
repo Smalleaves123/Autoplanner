@@ -41,7 +41,7 @@ integration surfaces.
 
 - [x] Warm-start each control sequence from the previous optimal rollout.
 - [x] Add adaptive sampling variance and effective-sample diagnostics.
-- [ ] Add configurable probability/risk costs without weakening hard collision
+- [x] Add configurable probability/risk costs without weakening hard collision
   rejection.
 - [ ] Reuse rollout buffers and benchmark allocation-free control cycles.
 - [ ] Evaluate SIMD and optional GPU acceleration after a CPU profiling baseline.

@@ -60,6 +60,7 @@ local_planner:
     control_weight: 0.2
     control_rate_weight: 0.1
     dynamic_obstacle_weight: 1.0
+    dynamic_probability_weight: 0.0
     dynamic_clearance: 0.5
     dynamic_obstacle_margin: 0.0
     dynamic_collision_samples: 3

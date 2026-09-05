@@ -192,6 +192,9 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.mppi_options.dynamic_obstacle_weight = loader.getDouble(
         "local_planner.mppi.dynamic_obstacle_weight",
         pipeline.mppi_options.dynamic_obstacle_weight);
+    pipeline.mppi_options.dynamic_probability_weight = loader.getDouble(
+        "local_planner.mppi.dynamic_probability_weight",
+        pipeline.mppi_options.dynamic_probability_weight);
     pipeline.mppi_options.dynamic_clearance = loader.getDouble(
         "local_planner.mppi.dynamic_clearance",
         pipeline.mppi_options.dynamic_clearance);

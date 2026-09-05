@@ -444,6 +444,12 @@ the next cycle's velocity and steering noise within the configured minimum and
 maximum scales. Pipeline metrics report the mean ESS, mean ESS ratio, and most
 recent sampling-noise scale for tuning and regression analysis.
 
+For tracked obstacles with covariance, MPPI can also add an occupancy-risk
+cost using `local_planner.mppi.dynamic_probability_weight`. The probability
+term is computed independently of the collision gate: increasing or disabling
+the soft cost never relaxes static, footprint, or predicted hard-collision
+rejection. The maximum evaluated probability is included in pipeline metrics.
+
 In the dynamic pipeline, MPPI additionally rejects static and predicted
 dynamic collisions during every rollout and adds a configurable dynamic
 clearance cost (`local_planner.mppi.dynamic_clearance`, default `0.5`) before
