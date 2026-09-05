@@ -44,6 +44,7 @@ add_subdirectory(autoplanner)
 add_subdirectory(autompc)
 
 add_library(robotnav_pipeline STATIC
+    src/component_catalog.cpp
     src/dwa_local_planner.cpp
     src/dynamic_navigation_pipeline.cpp
     src/local_planner_registry.cpp

@@ -15,6 +15,7 @@
 #include "autoplanner/core/path.h"
 #include "autoplanner/core/planner_factory.h"
 #include "autoplanner/smoothing/smoother_factory.h"
+#include "robotnav/component_catalog.h"
 #include "robotnav/local_planner_registry.h"
 #include "robotnav/trajectory_controller.h"
 
@@ -143,6 +144,12 @@ PipelineResult NavigationPipeline::run(
         result.message = message;
         return result;
     };
+
+    const auto component_selection = validateComponentSelection(config);
+    if (!component_selection.valid) {
+        return fail(StatusCode::InvalidConfiguration,
+                    component_selection.message);
+    }
 
     if (map.isEmpty()) {
         return fail(StatusCode::InvalidConfiguration, "map is empty");

@@ -22,7 +22,8 @@ integration surfaces.
 - [x] Expose registered planner discovery to the native Python backend.
 - [x] Introduce a common trajectory-controller adapter and controller registry.
 - [x] Introduce local-planner and path-smoother registries.
-- [ ] Centralize configuration validation and expose available component names.
+- [x] Centralize component selection validation and expose available component
+  names through the C++ catalog.
 - [ ] Add examples showing an application-defined planner and controller.
 
 ## Phase 2: Dynamic navigation resilience

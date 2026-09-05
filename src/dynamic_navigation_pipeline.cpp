@@ -18,6 +18,7 @@
 #include "autoplanner/planners/graph_search/astar.h"
 #include "autoplanner/planners/graph_search/dstar_lite.h"
 #include "autoplanner/smoothing/smoother_factory.h"
+#include "robotnav/component_catalog.h"
 #include "robotnav/local_planner_registry.h"
 #include "robotnav/safety_supervisor.h"
 #include "robotnav/space_time_astar.h"
@@ -356,6 +357,13 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         result.message = message;
         return result;
     };
+
+    const auto component_selection = validateComponentSelection(
+        config.pipeline, true);
+    if (!component_selection.valid) {
+        return fail(StatusCode::InvalidConfiguration,
+                    component_selection.message);
+    }
 
     if (map.isEmpty() || config.frames == 0 ||
         config.steps_per_frame == 0 || config.pipeline.max_steps == 0 ||

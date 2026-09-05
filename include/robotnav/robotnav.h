@@ -1,5 +1,6 @@
 #pragma once
 
+#include "robotnav/component_catalog.h"
 #include "robotnav/dwa_local_planner.h"
 #include "robotnav/dynamic_obstacle_prediction.h"
 #include "robotnav/dynamic_navigation_pipeline.h"

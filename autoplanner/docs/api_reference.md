@@ -165,6 +165,17 @@ auto smoother = createSmoother("curvature", checker, options);
 The reserved name `none` means that the corresponding optional stage is
 disabled and cannot be replaced by a registry entry.
 
+The top-level catalog provides deterministic discovery and shared selection
+validation before map preparation begins:
+
+```cpp
+const auto catalog = robotnav::availableComponents();
+const auto validation = robotnav::validateComponentSelection(config);
+if (!validation.valid) {
+    std::cerr << validation.message << '\n';
+}
+```
+
 ---
 
 ## PlannerResult
