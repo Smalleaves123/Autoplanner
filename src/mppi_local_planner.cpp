@@ -162,7 +162,10 @@ MppiDecision MppiLocalPlanner::computeCommand(
         !std::isfinite(options_.dynamic_clearance) ||
         options_.dynamic_clearance < 0.0 ||
         !std::isfinite(options_.dynamic_obstacle_margin) ||
-        options_.dynamic_obstacle_margin < 0.0) {
+        options_.dynamic_obstacle_margin < 0.0 ||
+        !std::isfinite(options_.warm_start_blend) ||
+        options_.warm_start_blend < 0.0 ||
+        options_.warm_start_blend > 1.0) {
         return decision;
     }
 
@@ -199,6 +202,23 @@ MppiDecision MppiLocalPlanner::computeCommand(
 
     const auto rollout_count = static_cast<std::size_t>(options_.rollouts);
     const auto horizon = static_cast<std::size_t>(options_.horizon);
+    std::vector<autompc::Control> base_controls(horizon, nominal);
+    if (options_.warm_start) {
+        std::lock_guard<std::mutex> lock(warm_start_mutex_);
+        if (previous_optimal_controls_.size() == horizon) {
+            decision.warm_started = true;
+            for (std::size_t step = 0; step < horizon; ++step) {
+                const auto source = std::min(step + 1, horizon - 1);
+                const auto& previous = previous_optimal_controls_[source];
+                base_controls[step].velocity =
+                    options_.warm_start_blend * previous.velocity +
+                    (1.0 - options_.warm_start_blend) * nominal.velocity;
+                base_controls[step].steering =
+                    options_.warm_start_blend * previous.steering +
+                    (1.0 - options_.warm_start_blend) * nominal.steering;
+            }
+        }
+    }
     std::vector<autompc::Control> sampled_controls(rollout_count * horizon);
     std::mt19937 generator(options_.random_seed);
     std::normal_distribution<double> velocity_distribution(
@@ -215,13 +235,14 @@ MppiDecision MppiLocalPlanner::computeCommand(
     for (std::size_t rollout = 0; rollout < rollout_count; ++rollout) {
         for (std::size_t step = 0; step < horizon; ++step) {
             const bool baseline = rollout == 0;
+            const auto& base = base_controls[step];
             sampled_controls[rollout * horizon + step] = {
                 clampFinite(
-                    nominal.velocity +
+                    base.velocity +
                         (baseline ? 0.0 : velocity_distribution(generator)),
                     minimum_velocity, simulation_options_.max_velocity),
                 clampFinite(
-                    nominal.steering +
+                    base.steering +
                         (baseline ? 0.0 : steering_distribution(generator)),
                     -simulation_options_.max_steering,
                     simulation_options_.max_steering)};
@@ -313,7 +334,9 @@ MppiDecision MppiLocalPlanner::computeCommand(
     }
 
     autompc::Control best_first_command = nominal;
-    for (const auto& result : rollout_results) {
+    std::size_t best_rollout = rollout_count;
+    for (std::size_t index = 0; index < rollout_results.size(); ++index) {
+        const auto& result = rollout_results[index];
         decision.dynamic_collision_rejections +=
             result.dynamic_collision_rejections;
         decision.minimum_dynamic_clearance = std::min(
@@ -324,6 +347,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
         if (result.cost < decision.score) {
             decision.score = result.cost;
             best_first_command = result.first_command;
+            best_rollout = index;
         }
     }
 
@@ -331,27 +355,36 @@ MppiDecision MppiLocalPlanner::computeCommand(
 
     const double minimum_cost = decision.score;
     double weight_sum = 0.0;
-    autompc::Control weighted_command;
-    for (const auto& rollout : rollout_results) {
+    std::vector<autompc::Control> weighted_controls(horizon);
+    for (std::size_t rollout_index = 0;
+         rollout_index < rollout_results.size(); ++rollout_index) {
+        const auto& rollout = rollout_results[rollout_index];
         if (!rollout.valid) continue;
         const double exponent = -(rollout.cost - minimum_cost) /
                                 options_.temperature;
         const double weight = std::exp(std::max(-700.0, exponent));
         if (!std::isfinite(weight)) continue;
         weight_sum += weight;
-        weighted_command.velocity += weight * rollout.first_command.velocity;
-        weighted_command.steering += weight * rollout.first_command.steering;
+        for (std::size_t step = 0; step < horizon; ++step) {
+            const auto& command = sampled_controls[
+                rollout_index * horizon + step];
+            weighted_controls[step].velocity += weight * command.velocity;
+            weighted_controls[step].steering += weight * command.steering;
+        }
     }
     if (weight_sum <= 0.0 || !std::isfinite(weight_sum)) return decision;
 
-    autompc::Control aggregated_command;
-    aggregated_command.velocity = clampFinite(
-        weighted_command.velocity / weight_sum, minimum_velocity,
-        simulation_options_.max_velocity);
-    aggregated_command.steering = clampFinite(
-        weighted_command.steering / weight_sum,
-        -simulation_options_.max_steering,
-        simulation_options_.max_steering);
+    std::vector<autompc::Control> optimized_controls(horizon);
+    for (std::size_t step = 0; step < horizon; ++step) {
+        optimized_controls[step].velocity = clampFinite(
+            weighted_controls[step].velocity / weight_sum,
+            minimum_velocity, simulation_options_.max_velocity);
+        optimized_controls[step].steering = clampFinite(
+            weighted_controls[step].steering / weight_sum,
+            -simulation_options_.max_steering,
+            simulation_options_.max_steering);
+    }
+    const auto& aggregated_command = optimized_controls.front();
 
     // The weighted mean is not guaranteed to remain inside the non-convex
     // collision-free set. Keep the best sampled first action as a safety
@@ -372,7 +405,23 @@ MppiDecision MppiLocalPlanner::computeCommand(
         ? aggregated_command
         : best_first_command;
     decision.feasible = true;
+    if (options_.warm_start && best_rollout < rollout_count) {
+        std::lock_guard<std::mutex> lock(warm_start_mutex_);
+        if (aggregate_valid) {
+            previous_optimal_controls_ = std::move(optimized_controls);
+        } else {
+            const auto begin = sampled_controls.begin() +
+                static_cast<std::ptrdiff_t>(best_rollout * horizon);
+            previous_optimal_controls_.assign(
+                begin, begin + static_cast<std::ptrdiff_t>(horizon));
+        }
+    }
     return decision;
+}
+
+void MppiLocalPlanner::resetWarmStart() {
+    std::lock_guard<std::mutex> lock(warm_start_mutex_);
+    previous_optimal_controls_.clear();
 }
 
 }  // namespace robotnav

@@ -422,7 +422,10 @@ each sequence through the kinematic bicycle model, scores path/heading/speed
 tracking and control smoothness, and aggregates the first command with
 temperature-weighted costs. The zero-noise nominal sequence is always kept as
 a deterministic baseline; `--mppi-*` options expose the prediction horizon,
-rollout count, temperature, and exploration noise:
+rollout count, temperature, and exploration noise. After the first cycle,
+the optimized sequence is shifted and blended with the current controller
+command to warm-start the next cycle. Use `--mppi-warm-start-blend` to tune
+that blend or `--no-mppi-warm-start` to restore independent sampling:
 
 ```bash
 ./build/apps/navigation_pipeline_cli \
@@ -431,6 +434,7 @@ rollout count, temperature, and exploration noise:
     --mppi-prediction-time 0.8 --mppi-horizon 12 \
     --mppi-rollouts 64 --mppi-temperature 0.5 \
     --mppi-velocity-noise 0.35 --mppi-steering-noise 0.12 \
+    --mppi-warm-start-blend 0.25 \
     --output-dir autoplanner/results/robotnav-mppi
 ```
 

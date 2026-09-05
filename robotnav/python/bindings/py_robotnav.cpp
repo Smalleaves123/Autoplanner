@@ -138,6 +138,8 @@ py::dict runDynamic(
         result.metrics.moving_obstacle_update_count;
     metrics["dynamic_local_collision_rejections"] =
         result.metrics.dynamic_local_collision_rejections;
+    metrics["local_planner_warm_start_count"] =
+        result.metrics.local_planner_warm_start_count;
     metrics["collision_steps"] = result.metrics.collision_steps;
     metrics["state_transition_count"] =
         result.metrics.state_transition_count;

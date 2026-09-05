@@ -441,7 +441,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
          config.pipeline.mppi_options.dynamic_clearance < 0.0 ||
          !std::isfinite(
              config.pipeline.mppi_options.dynamic_obstacle_margin) ||
-         config.pipeline.mppi_options.dynamic_obstacle_margin < 0.0)) {
+         config.pipeline.mppi_options.dynamic_obstacle_margin < 0.0 ||
+         !std::isfinite(config.pipeline.mppi_options.warm_start_blend) ||
+         config.pipeline.mppi_options.warm_start_blend < 0.0 ||
+         config.pipeline.mppi_options.warm_start_blend > 1.0)) {
         return fail(StatusCode::InvalidConfiguration,
                     "invalid MPPI local planner configuration");
     }
@@ -873,6 +876,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                             "replanned trajectory violates the configured turning-radius constraint");
             }
             controller->onTrajectoryChanged();
+            if (local_planner) local_planner->onTrajectoryChanged();
             replanned = true;
             transitionTo(NavigationState::Tracking,
                          "global replanning succeeded", frame);
@@ -908,6 +912,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                     decision.dynamic_collision_rejections;
                 result.metrics.local_planner_rollouts +=
                     decision.feasible_rollouts;
+                if (decision.warm_started) {
+                    ++result.metrics.local_planner_warm_start_count;
+                }
                 if (std::isfinite(decision.minimum_dynamic_clearance)) {
                     if (result.metrics.minimum_dynamic_obstacle_clearance == 0.0) {
                         result.metrics.minimum_dynamic_obstacle_clearance =
@@ -1064,6 +1071,8 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << result.metrics.local_planner_adjustments << ",\n"
            << "  \"local_planner_rollouts\": "
            << result.metrics.local_planner_rollouts << ",\n"
+           << "  \"local_planner_warm_start_count\": "
+           << result.metrics.local_planner_warm_start_count << ",\n"
            << "  \"external_update_count\": "
            << result.metrics.external_update_count << ",\n"
            << "  \"moving_obstacle_update_count\": "

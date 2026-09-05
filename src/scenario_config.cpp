@@ -201,6 +201,12 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.mppi_options.dynamic_collision_samples = loader.getInt(
         "local_planner.mppi.dynamic_collision_samples",
         pipeline.mppi_options.dynamic_collision_samples);
+    pipeline.mppi_options.warm_start = loader.getBool(
+        "local_planner.mppi.warm_start",
+        pipeline.mppi_options.warm_start);
+    pipeline.mppi_options.warm_start_blend = loader.getDouble(
+        "local_planner.mppi.warm_start_blend",
+        pipeline.mppi_options.warm_start_blend);
     const int mppi_seed = loader.getInt(
         "local_planner.mppi.random_seed",
         static_cast<int>(pipeline.mppi_options.random_seed));

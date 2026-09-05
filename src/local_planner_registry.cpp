@@ -27,7 +27,8 @@ public:
                 decision.score,
                 0,
                 decision.dynamic_collision_rejections,
-                decision.minimum_dynamic_clearance};
+                decision.minimum_dynamic_clearance,
+                false};
     }
 
 private:
@@ -41,6 +42,10 @@ public:
         const autompc::SimulationOptions& simulation_options,
         const MppiOptions& options)
         : planner_(collision_checker, simulation_options, options) {}
+
+    void onTrajectoryChanged() override {
+        planner_.resetWarmStart();
+    }
 
     LocalPlannerDecision computeCommand(
         const autompc::State& state,
@@ -56,7 +61,8 @@ public:
                 decision.score,
                 decision.feasible_rollouts,
                 decision.dynamic_collision_rejections,
-                decision.minimum_dynamic_clearance};
+                decision.minimum_dynamic_clearance,
+                decision.warm_started};
     }
 
 private:

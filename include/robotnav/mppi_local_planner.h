@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <mutex>
+#include <vector>
 
 #include "autompc/core/trajectory.h"
 #include "autompc/core/types.h"
@@ -27,6 +29,8 @@ struct MppiOptions {
     double dynamic_obstacle_margin = 0.0;
     int dynamic_collision_samples = 3;
     unsigned int random_seed = 42;
+    bool warm_start = true;
+    double warm_start_blend = 0.25;
 };
 
 struct MppiDecision {
@@ -36,6 +40,7 @@ struct MppiDecision {
     std::size_t feasible_rollouts = 0;
     std::size_t dynamic_collision_rejections = 0;
     double minimum_dynamic_clearance = 0.0;
+    bool warm_started = false;
 };
 
 class MppiLocalPlanner {
@@ -51,10 +56,14 @@ public:
         const autompc::Control& nominal_command,
         const DynamicObstacleContext& dynamic_context = {}) const;
 
+    void resetWarmStart();
+
 private:
     const autoplanner::CollisionChecker& collision_checker_;
     autompc::SimulationOptions simulation_options_;
     MppiOptions options_;
+    mutable std::mutex warm_start_mutex_;
+    mutable std::vector<autompc::Control> previous_optimal_controls_;
 };
 
 }  // namespace robotnav

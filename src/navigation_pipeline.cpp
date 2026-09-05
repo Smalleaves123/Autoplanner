@@ -212,7 +212,10 @@ PipelineResult NavigationPipeline::run(
          !std::isfinite(config.mppi_options.dynamic_clearance) ||
          config.mppi_options.dynamic_clearance < 0.0 ||
          !std::isfinite(config.mppi_options.dynamic_obstacle_margin) ||
-         config.mppi_options.dynamic_obstacle_margin < 0.0)) {
+         config.mppi_options.dynamic_obstacle_margin < 0.0 ||
+         !std::isfinite(config.mppi_options.warm_start_blend) ||
+         config.mppi_options.warm_start_blend < 0.0 ||
+         config.mppi_options.warm_start_blend > 1.0)) {
         return fail(StatusCode::InvalidConfiguration,
                     "invalid MPPI local planner configuration");
     }
@@ -484,6 +487,9 @@ PipelineResult NavigationPipeline::run(
                     .count();
             result.metrics.local_planner_rollouts +=
                 decision.feasible_rollouts;
+            if (decision.warm_started) {
+                ++result.metrics.local_planner_warm_start_count;
+            }
             result.metrics.local_planner_collision_rejections +=
                 decision.dynamic_collision_rejections;
             if (std::isfinite(decision.minimum_dynamic_clearance)) {
@@ -607,6 +613,8 @@ bool savePipelineMetricsJson(const PipelineResult& result,
            << result.metrics.local_planner_adjustments << ",\n"
            << "  \"local_planner_rollouts\": "
            << result.metrics.local_planner_rollouts << ",\n"
+           << "  \"local_planner_warm_start_count\": "
+           << result.metrics.local_planner_warm_start_count << ",\n"
            << "  \"local_planner_collision_rejections\": "
            << result.metrics.local_planner_collision_rejections << ",\n"
            << "  \"local_planner_time_ms\": ";

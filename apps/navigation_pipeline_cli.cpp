@@ -44,6 +44,8 @@ void printHelp() {
         << "  --mppi-temperature N   MPPI soft-min temperature\n"
         << "  --mppi-velocity-noise N MPPI velocity noise\n"
         << "  --mppi-steering-noise N MPPI steering noise\n"
+        << "  --no-mppi-warm-start disable MPPI sequence warm start\n"
+        << "  --mppi-warm-start-blend N previous-sequence blend [0,1]\n"
         << "  --start X Y           start cell\n"
         << "  --goal X Y            goal cell\n"
         << "  --max-steps N         controller execution limit\n"
@@ -81,6 +83,8 @@ int main(int argc, char** argv) {
     bool has_mppi_temperature = false;
     bool has_mppi_velocity_noise = false;
     bool has_mppi_steering_noise = false;
+    bool has_mppi_warm_start = false;
+    bool has_mppi_warm_start_blend = false;
     bool has_start = false;
     bool has_goal = false;
     bool has_max_steps = false;
@@ -177,6 +181,13 @@ int main(int argc, char** argv) {
             scenario.pipeline.mppi_options.steering_noise =
                 std::stod(argv[++i]);
             has_mppi_steering_noise = true;
+        } else if (arg == "--no-mppi-warm-start") {
+            scenario.pipeline.mppi_options.warm_start = false;
+            has_mppi_warm_start = true;
+        } else if (arg == "--mppi-warm-start-blend" && i + 1 < argc) {
+            scenario.pipeline.mppi_options.warm_start_blend =
+                std::stod(argv[++i]);
+            has_mppi_warm_start_blend = true;
         } else if (arg == "--start" && i + 2 < argc) {
             scenario.start = {std::stoi(argv[++i]), std::stoi(argv[++i])};
             has_start = true;
@@ -306,6 +317,12 @@ int main(int argc, char** argv) {
         if (has_mppi_steering_noise)
             scenario.pipeline.mppi_options.steering_noise =
                 pipeline_override.mppi_options.steering_noise;
+        if (has_mppi_warm_start)
+            scenario.pipeline.mppi_options.warm_start =
+                pipeline_override.mppi_options.warm_start;
+        if (has_mppi_warm_start_blend)
+            scenario.pipeline.mppi_options.warm_start_blend =
+                pipeline_override.mppi_options.warm_start_blend;
         if (has_max_steps) scenario.pipeline.max_steps =
             pipeline_override.max_steps;
         if (has_velocity) scenario.pipeline.trajectory_options.target_velocity =

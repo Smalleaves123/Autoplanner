@@ -25,11 +25,14 @@ struct LocalPlannerDecision {
     std::size_t feasible_rollouts = 0;
     std::size_t dynamic_collision_rejections = 0;
     double minimum_dynamic_clearance = 0.0;
+    bool warm_started = false;
 };
 
 class LocalPlanner {
 public:
     virtual ~LocalPlanner() = default;
+
+    virtual void onTrajectoryChanged() {}
 
     virtual LocalPlannerDecision computeCommand(
         const autompc::State& state,

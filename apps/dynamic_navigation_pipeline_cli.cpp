@@ -50,6 +50,8 @@ void printHelp() {
         << "  --mppi-temperature N   MPPI soft-min temperature\n"
         << "  --mppi-velocity-noise N MPPI velocity noise\n"
         << "  --mppi-steering-noise N MPPI steering noise\n"
+        << "  --no-mppi-warm-start disable MPPI sequence warm start\n"
+        << "  --mppi-warm-start-blend N previous-sequence blend [0,1]\n"
         << "  --prediction-risk-weight N Space-time prediction risk weight\n"
         << "  --prediction-risk-clearance N risk clearance in map cells\n"
         << "  --velocity N          target trajectory velocity\n"
@@ -182,6 +184,8 @@ int main(int argc, char** argv) {
     bool has_mppi_temperature = false;
     bool has_mppi_velocity_noise = false;
     bool has_mppi_steering_noise = false;
+    bool has_mppi_warm_start = false;
+    bool has_mppi_warm_start_blend = false;
     bool has_prediction_risk_weight = false;
     bool has_prediction_risk_clearance = false;
     bool has_moving_obstacle_radius = false;
@@ -221,6 +225,8 @@ int main(int argc, char** argv) {
     double mppi_temperature_override = 0.0;
     double mppi_velocity_noise_override = 0.0;
     double mppi_steering_noise_override = 0.0;
+    bool mppi_warm_start_override = true;
+    double mppi_warm_start_blend_override = 0.0;
     double prediction_risk_weight_override = 0.0;
     double prediction_risk_clearance_override = 0.0;
     double moving_obstacle_radius = 0.0;
@@ -341,6 +347,12 @@ int main(int argc, char** argv) {
         } else if (arg == "--mppi-steering-noise" && i + 1 < argc) {
             mppi_steering_noise_override = std::stod(argv[++i]);
             has_mppi_steering_noise = true;
+        } else if (arg == "--no-mppi-warm-start") {
+            mppi_warm_start_override = false;
+            has_mppi_warm_start = true;
+        } else if (arg == "--mppi-warm-start-blend" && i + 1 < argc) {
+            mppi_warm_start_blend_override = std::stod(argv[++i]);
+            has_mppi_warm_start_blend = true;
         } else if (arg == "--prediction-risk-weight" && i + 1 < argc) {
             prediction_risk_weight_override = std::stod(argv[++i]);
             has_prediction_risk_weight = true;
@@ -514,6 +526,12 @@ int main(int argc, char** argv) {
     if (has_mppi_steering_noise)
         scenario.pipeline.mppi_options.steering_noise =
             mppi_steering_noise_override;
+    if (has_mppi_warm_start)
+        scenario.pipeline.mppi_options.warm_start =
+            mppi_warm_start_override;
+    if (has_mppi_warm_start_blend)
+        scenario.pipeline.mppi_options.warm_start_blend =
+            mppi_warm_start_blend_override;
     if (has_prediction_risk_weight)
         scenario.pipeline.dynamic_prediction_risk_weight =
             prediction_risk_weight_override;
