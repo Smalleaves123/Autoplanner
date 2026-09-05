@@ -28,10 +28,10 @@ integration surfaces.
 
 ## Phase 2: Dynamic navigation resilience
 
-- [ ] Add an explicit navigation state machine: tracking, yielding, replanning,
+- [x] Add an explicit navigation state machine: tracking, yielding, replanning,
   recovery, safe stop, and terminal failure.
-- [ ] Add bounded retry and cooldown policies for global replanning.
-- [ ] Record state transitions and failure causes in trace and JSON artifacts.
+- [x] Add bounded retry and cooldown policies for global replanning.
+- [x] Record state transitions and failure causes in trace and JSON artifacts.
 - [ ] Add deterministic crossing, overtaking, blocked-corridor, and disappearing
   obstacle regression scenarios.
 - [ ] Enforce one time base across prediction, local rollout, simulation, and

@@ -77,9 +77,13 @@ py::dict runDynamic(
     double prediction_risk_weight,
     double prediction_risk_clearance,
     const std::vector<MovingObstacleSpec>& moving_obstacles,
-    const std::vector<ObstacleUpdateSpec>& obstacle_updates) {
-    if (frames == 0 || steps_per_frame == 0) {
-        throw std::invalid_argument("frames and steps_per_frame must be positive");
+    const std::vector<ObstacleUpdateSpec>& obstacle_updates,
+    std::size_t max_replanning_retries,
+    std::size_t replanning_cooldown_frames,
+    std::size_t recovery_stop_steps) {
+    if (frames == 0 || steps_per_frame == 0 || recovery_stop_steps == 0) {
+        throw std::invalid_argument(
+            "frames, steps_per_frame, and recovery_stop_steps must be positive");
     }
 
     autoplanner::GridMap map;
@@ -91,6 +95,9 @@ py::dict runDynamic(
     config.frames = frames;
     config.steps_per_frame = steps_per_frame;
     config.auto_insert_obstacles = auto_insert_obstacles;
+    config.max_replanning_retries = max_replanning_retries;
+    config.replanning_cooldown_frames = replanning_cooldown_frames;
+    config.recovery_stop_steps = recovery_stop_steps;
     config.pipeline.planner = planner;
     config.pipeline.controller = controller;
     config.pipeline.local_planner = local_planner;
@@ -132,6 +139,15 @@ py::dict runDynamic(
     metrics["dynamic_local_collision_rejections"] =
         result.metrics.dynamic_local_collision_rejections;
     metrics["collision_steps"] = result.metrics.collision_steps;
+    metrics["state_transition_count"] =
+        result.metrics.state_transition_count;
+    metrics["recovery_attempt_count"] =
+        result.metrics.recovery_attempt_count;
+    metrics["yielding_steps"] = result.metrics.yielding_steps;
+    metrics["suppressed_replanning_count"] =
+        result.metrics.suppressed_replanning_count;
+    metrics["final_state"] = std::string(
+        robotnav::toString(result.metrics.final_state));
     metrics["total_space_time_planning_time_ms"] =
         result.metrics.total_space_time_planning_time_ms;
     metrics["total_dstar_replanning_time_ms"] =
@@ -167,9 +183,24 @@ py::dict runDynamic(
         item["command_steering"] = sample.command.steering;
         item["replanned"] = sample.replanned;
         item["safe_stop"] = sample.safe_stop;
+        item["navigation_state"] = std::string(
+            robotnav::toString(sample.navigation_state));
         trace.append(item);
     }
     output["trace"] = trace;
+
+    py::list state_transitions;
+    for (const auto& transition : result.state_transitions) {
+        py::dict item;
+        item["frame"] = transition.frame;
+        item["step"] = transition.step;
+        item["time"] = transition.time;
+        item["from"] = std::string(robotnav::toString(transition.from));
+        item["to"] = std::string(robotnav::toString(transition.to));
+        item["reason"] = transition.reason;
+        state_transitions.append(item);
+    }
+    output["state_transitions"] = state_transitions;
     return output;
 }
 
@@ -217,5 +248,8 @@ PYBIND11_MODULE(_robotnav, module) {
                py::arg("prediction_risk_weight") = 0.0,
                py::arg("prediction_risk_clearance") = 0.0,
                py::arg("moving_obstacles") = std::vector<MovingObstacleSpec>{},
-               py::arg("obstacle_updates") = std::vector<ObstacleUpdateSpec>{});
+               py::arg("obstacle_updates") = std::vector<ObstacleUpdateSpec>{},
+               py::arg("max_replanning_retries") = 1,
+               py::arg("replanning_cooldown_frames") = 0,
+               py::arg("recovery_stop_steps") = 10);
 }

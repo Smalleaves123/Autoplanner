@@ -560,6 +560,13 @@ TEST(DynamicNavigationPipelineTest, ReplansAndReachesGoalWithoutCollision) {
     EXPECT_FALSE(result.metrics.safe_stop);
     EXPECT_EQ(result.metrics.collision_steps, 0u);
     EXPECT_GE(result.metrics.replanning_count, 1u);
+    EXPECT_EQ(result.metrics.final_state,
+              robotnav::NavigationState::GoalReached);
+    EXPECT_GT(result.metrics.state_transition_count, 0u);
+    EXPECT_EQ(result.metrics.state_transition_count,
+              result.state_transitions.size());
+    ASSERT_FALSE(result.trace.empty());
+    EXPECT_NE(robotnav::toString(result.trace.front().navigation_state), "");
     EXPECT_EQ(result.metrics.steps, result.trace.size());
     EXPECT_FALSE(result.final_path.empty());
 }
@@ -584,6 +591,99 @@ TEST(DynamicNavigationPipelineTest, AcceptsExternalObstacleUpdates) {
     EXPECT_GE(result.metrics.replanning_count, 1u);
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_FALSE(result.metrics.safe_stop);
+}
+
+TEST(DynamicNavigationPipelineTest, RecoversAfterBlockedCorridorClears) {
+    const auto map_path = robotnav_test::artifactPath(
+        "robotnav_recovery_corridor_test.txt");
+    {
+        std::ofstream output(map_path);
+        ASSERT_TRUE(output.is_open());
+        output << "111111111111111111111111111111\n";
+        for (int row = 0; row < 5; ++row) {
+            output << "100000000000000000000000000001\n";
+        }
+        output << "111111111111111111111111111111\n";
+    }
+
+    autoplanner::GridMap map;
+    ASSERT_TRUE(map.loadFromTxt(map_path.string()));
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.max_steps = 1200;
+    config.frames = 30;
+    config.steps_per_frame = 20;
+    config.auto_insert_obstacles = false;
+    config.max_replanning_retries = 2;
+    config.recovery_stop_steps = 5;
+    for (int y = 1; y <= 5; ++y) {
+        config.obstacle_updates.push_back({1, {15, y}, true});
+        config.obstacle_updates.push_back({2, {15, y}, false});
+    }
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(map, {2, 3}, {27, 3}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.metrics.safe_stop);
+    EXPECT_GE(result.metrics.recovery_attempt_count, 1u);
+    EXPECT_EQ(result.metrics.yielding_steps, config.recovery_stop_steps);
+    EXPECT_TRUE(std::any_of(
+        result.trace.begin(), result.trace.end(),
+        [](const robotnav::DynamicTraceSample& sample) {
+            return sample.navigation_state == robotnav::NavigationState::Yielding;
+        }));
+    EXPECT_TRUE(std::any_of(
+        result.state_transitions.begin(), result.state_transitions.end(),
+        [](const robotnav::NavigationStateTransition& transition) {
+            return transition.to == robotnav::NavigationState::Recovery &&
+                   !transition.reason.empty();
+        }));
+
+    auto exhausted_config = config;
+    exhausted_config.max_replanning_retries = 0;
+    exhausted_config.obstacle_updates.erase(
+        std::remove_if(
+            exhausted_config.obstacle_updates.begin(),
+            exhausted_config.obstacle_updates.end(),
+            [](const robotnav::DynamicObstacleUpdate& update) {
+                return !update.occupied;
+            }),
+        exhausted_config.obstacle_updates.end());
+    const auto exhausted = pipeline.run(
+        map, {2, 3}, {27, 3}, exhausted_config);
+    EXPECT_EQ(exhausted.metrics.status,
+              robotnav::StatusCode::ReplanningFailed);
+    EXPECT_TRUE(exhausted.metrics.safe_stop);
+    EXPECT_EQ(exhausted.metrics.recovery_attempt_count, 0u);
+    EXPECT_EQ(exhausted.metrics.final_state,
+              robotnav::NavigationState::SafeStop);
+
+    std::error_code error;
+    std::filesystem::remove(map_path, error);
+}
+
+TEST(DynamicNavigationPipelineTest, SuppressesOffPathChangesDuringCooldown) {
+    const auto map = loadSimpleMap();
+    robotnav::DynamicPipelineConfig config;
+    config.pipeline.controller = "stanley";
+    config.pipeline.max_steps = 100;
+    config.frames = 4;
+    config.steps_per_frame = 1;
+    config.auto_insert_obstacles = false;
+    config.replanning_cooldown_frames = 3;
+    config.obstacle_updates.push_back({1, {45, 45}, true});
+    config.obstacle_updates.push_back({2, {44, 45}, true});
+
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(map, {1, 1}, {20, 20}, config);
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Timeout)
+        << result.message;
+    EXPECT_EQ(result.metrics.replanning_count, 1u);
+    EXPECT_EQ(result.metrics.suppressed_replanning_count, 1u);
 }
 
 TEST(DynamicNavigationPipelineTest, TracksMovingObstacleUpdates) {
@@ -616,6 +716,8 @@ TEST(DynamicNavigationPipelineTest, TracksMovingObstacleUpdates) {
         (std::istreambuf_iterator<char>(input)),
         std::istreambuf_iterator<char>());
     EXPECT_NE(json.find("moving_obstacle_update_count"), std::string::npos);
+    EXPECT_NE(json.find("state_transitions"), std::string::npos);
+    EXPECT_NE(json.find("initial path ready"), std::string::npos);
     std::error_code error;
     std::filesystem::remove(path, error);
 }

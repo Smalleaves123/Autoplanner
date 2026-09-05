@@ -92,6 +92,9 @@ class DynamicConfig:
     auto_insert_obstacles: bool = True
     prediction_risk_weight: float = 0.0
     prediction_risk_clearance: float = 0.0
+    max_replanning_retries: int = 1
+    replanning_cooldown_frames: int = 0
+    recovery_stop_steps: int = 10
     moving_obstacles: tuple[MovingObstacle, ...] = field(default_factory=tuple)
     obstacle_updates: tuple[ObstacleUpdate, ...] = field(default_factory=tuple)
 
@@ -100,6 +103,10 @@ class DynamicConfig:
             raise ValueError("frames and steps_per_frame must be positive")
         if self.prediction_risk_weight < 0.0 or self.prediction_risk_clearance < 0.0:
             raise ValueError("prediction risk values must be non-negative")
+        if self.max_replanning_retries < 0 or self.replanning_cooldown_frames < 0:
+            raise ValueError("replanning retry and cooldown values must be non-negative")
+        if self.recovery_stop_steps <= 0:
+            raise ValueError("recovery_stop_steps must be positive")
 
 
 @dataclass(frozen=True)
@@ -110,6 +117,7 @@ class DynamicResult:
     path: tuple[tuple[float, float], ...]
     metrics: dict[str, Any]
     trace: tuple[dict[str, Any], ...]
+    state_transitions: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
     @classmethod
     def from_native(cls, result: dict[str, Any]) -> "DynamicResult":
@@ -121,6 +129,9 @@ class DynamicResult:
                        for point in result["path"]),
             metrics=dict(result["metrics"]),
             trace=tuple(dict(sample) for sample in result["trace"]),
+            state_transitions=tuple(
+                dict(transition)
+                for transition in result.get("state_transitions", ())),
         )
 
     @classmethod
@@ -135,6 +146,9 @@ class DynamicResult:
                        for point in result.get("path", ())),
             metrics=dict(result.get("metrics", {})),
             trace=tuple(dict(sample) for sample in result.get("trace", ())),
+            state_transitions=tuple(
+                dict(transition)
+                for transition in result.get("state_transitions", ())),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -148,6 +162,7 @@ class DynamicResult:
             "path": [list(point) for point in self.path],
             "metrics": self.metrics,
             "trace": list(self.trace),
+            "state_transitions": list(self.state_transitions),
         }
 
     def save_json(self, path: str | Path) -> Path:
@@ -205,6 +220,9 @@ class DynamicScenario:
                 "auto_insert_obstacles": config.auto_insert_obstacles,
                 "prediction_risk_weight": config.prediction_risk_weight,
                 "prediction_risk_clearance": config.prediction_risk_clearance,
+                "max_replanning_retries": config.max_replanning_retries,
+                "replanning_cooldown_frames": config.replanning_cooldown_frames,
+                "recovery_stop_steps": config.recovery_stop_steps,
                 "moving_obstacles": [obstacle.__dict__ for obstacle in config.moving_obstacles],
                 "obstacle_updates": [update.__dict__ for update in config.obstacle_updates],
             },
@@ -230,6 +248,9 @@ class DynamicScenario:
             auto_insert_obstacles=raw.get("auto_insert_obstacles", True),
             prediction_risk_weight=raw.get("prediction_risk_weight", 0.0),
             prediction_risk_clearance=raw.get("prediction_risk_clearance", 0.0),
+            max_replanning_retries=raw.get("max_replanning_retries", 1),
+            replanning_cooldown_frames=raw.get("replanning_cooldown_frames", 0),
+            recovery_stop_steps=raw.get("recovery_stop_steps", 10),
             moving_obstacles=obstacles,
             obstacle_updates=updates,
         )
@@ -287,6 +308,8 @@ def run_dynamic(
         config.frames, config.steps_per_frame, config.auto_insert_obstacles,
         config.prediction_risk_weight, config.prediction_risk_clearance,
         native_obstacles, native_updates,
+        config.max_replanning_retries, config.replanning_cooldown_frames,
+        config.recovery_stop_steps,
     )
     return DynamicResult.from_native(result)
 

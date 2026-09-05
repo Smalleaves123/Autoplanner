@@ -254,12 +254,23 @@ result = robotnav.run_dynamic(
         controller="stanley",
         frames=12,
         steps_per_frame=30,
+        max_replanning_retries=2,
+        replanning_cooldown_frames=1,
+        recovery_stop_steps=10,
         moving_obstacles=(robotnav.MovingObstacle(
             0, 10, 7, 4, 0, 1, radius=0.5),),
     ),
 )
 print(result.status_code, result.metrics["goal_reached"])
+print(result.metrics["final_state"], result.state_transitions)
 ```
+
+Failed dynamic replans use a bounded recovery policy. The retry count,
+replanning cooldown, and stop duration are configurable through
+`DynamicConfig` or the CLI flags `--max-replanning-retries`,
+`--replanning-cooldown-frames`, and `--recovery-stop-steps`. Per-sample state
+is stored in `trace`, while timestamped transitions and their reasons are
+stored in `state_transitions`.
 
 See `examples/python/dynamic_nav.py` for a complete scenario.
 

@@ -352,7 +352,26 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     result.metrics.prediction_risk_clearance =
         config.pipeline.dynamic_prediction_risk_clearance;
 
-    auto fail = [&result](StatusCode status, const std::string& message) {
+    NavigationState navigation_state = NavigationState::Initializing;
+    double time = 0.0;
+    auto transitionTo = [&](NavigationState next, const std::string& reason,
+                            std::size_t frame = 0,
+                            std::size_t step = 0) {
+        if (navigation_state != next) {
+            result.state_transitions.push_back({
+                frame, step, time, navigation_state, next, reason});
+            navigation_state = next;
+            ++result.metrics.state_transition_count;
+        }
+        result.metrics.final_state = navigation_state;
+    };
+
+    auto fail = [&result, &transitionTo](
+                    StatusCode status, const std::string& message) {
+        transitionTo(result.metrics.safe_stop
+                         ? NavigationState::SafeStop
+                         : NavigationState::Failed,
+                     message);
         result.metrics.status = status;
         result.message = message;
         return result;
@@ -367,7 +386,8 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
 
     if (map.isEmpty() || config.frames == 0 ||
         config.steps_per_frame == 0 || config.pipeline.max_steps == 0 ||
-        config.pipeline.simulation_options.dt <= 0.0) {
+        config.pipeline.simulation_options.dt <= 0.0 ||
+        config.recovery_stop_steps == 0) {
         return fail(StatusCode::InvalidConfiguration,
                     "dynamic pipeline configuration is invalid");
     }
@@ -515,6 +535,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         return fail(StatusCode::InvalidTrajectory,
                     "trajectory violates the configured turning-radius constraint");
     }
+    transitionTo(NavigationState::Tracking, "initial path ready");
 
     SafetyOptions safety_options = config.pipeline.safety_options;
     safety_options.max_velocity = safety_options.max_velocity <= 0.0
@@ -583,14 +604,16 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     bool has_previous_control = false;
     std::size_t total_control_samples = 0;
     double control_jump_sum = 0.0;
-    double time = 0.0;
+    std::size_t consecutive_replanning_failures = 0;
+    std::size_t next_replanning_frame = 0;
 
     auto appendSample = [&](std::size_t frame, std::size_t step,
                             const autompc::Control& command,
                             bool replanned,
                             const autoplanner::Point2i& obstacle,
                             double dstar_ms, double astar_ms,
-                            bool safe_stop) {
+                            bool safe_stop,
+                            NavigationState sample_state) {
         const auto reference = closestReference(trajectory, state);
         const double steering_delta = has_previous_control
             ? std::abs(command.steering - previous_control.steering) : 0.0;
@@ -607,7 +630,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         result.trace.push_back({
             frame, step, time, state, command, replanned, obstacle,
             dstar_ms, astar_ms, crossTrackError(state, reference),
-            steering_delta, velocity_delta, safe_stop});
+            steering_delta, velocity_delta, safe_stop, sample_state});
         ++result.metrics.steps;
         previous_control = command;
         has_previous_control = true;
@@ -718,9 +741,18 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         bool replanned = false;
         double dstar_ms = 0.0;
         double astar_ms = 0.0;
-        if (map_changed || !pathIsValid(*geometry.checker,
-                                         config.pipeline.footprint,
-                                         current_path)) {
+        const bool current_path_valid = pathIsValid(
+            *geometry.checker, config.pipeline.footprint, current_path);
+        const bool cooldown_active = frame < next_replanning_frame;
+        if (map_changed && current_path_valid && cooldown_active) {
+            ++result.metrics.suppressed_replanning_count;
+        }
+        if (!current_path_valid || (map_changed && !cooldown_active)) {
+            transitionTo(NavigationState::Replanning,
+                         current_path_valid
+                             ? "map changed"
+                             : "current path blocked",
+                         frame);
             const auto current = stateCell(state, geometry.planning_map);
             const auto dstar_begin = std::chrono::steady_clock::now();
             const auto dstar_result = use_space_time_astar
@@ -761,7 +793,35 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             if ((!dstar_result.success && !used_astar_fallback) ||
                 (dstar_result.success && dstar_result.path.empty())) {
+                const bool can_retry =
+                    consecutive_replanning_failures <
+                        config.max_replanning_retries &&
+                    frame + 1 < config.frames;
+                if (can_retry) {
+                    ++consecutive_replanning_failures;
+                    ++result.metrics.recovery_attempt_count;
+                    transitionTo(NavigationState::Recovery,
+                                 "global replanning failed", frame);
+                    transitionTo(NavigationState::Yielding,
+                                 "waiting before bounded retry", frame);
+                    for (std::size_t stop = 0;
+                         stop < config.recovery_stop_steps &&
+                         result.metrics.steps < config.pipeline.max_steps;
+                         ++stop) {
+                        const autompc::Control command{0.0, 0.0};
+                        state = simulator.step(command);
+                        appendSample(frame, stop, command, false, obstacle,
+                                     dstar_ms, astar_ms, false,
+                                     NavigationState::Yielding);
+                        ++result.metrics.yielding_steps;
+                    }
+                    ++result.metrics.frames_run;
+                    continue;
+                }
+
                 result.metrics.safe_stop = true;
+                transitionTo(NavigationState::SafeStop,
+                             "replanning retry budget exhausted", frame);
                 for (std::size_t stop = 0;
                      stop < config.steps_per_frame &&
                      result.metrics.steps < config.pipeline.max_steps;
@@ -769,7 +829,8 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                     const autompc::Control command{0.0, 0.0};
                     state = simulator.step(command);
                     appendSample(frame, stop, command, false, obstacle,
-                                 dstar_ms, astar_ms, true);
+                                 dstar_ms, astar_ms, true,
+                                 NavigationState::SafeStop);
                     if (state.v <= 1e-6) break;
                 }
                 result.metrics.collision_steps += 1;
@@ -779,6 +840,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                                 : "D* Lite failed; vehicle entered safe stop");
             }
 
+            consecutive_replanning_failures = 0;
             if (dstar_result.success) current_path = dstar_result.path;
             if (!preparePath(dynamic_map, config.pipeline,
                              max_trajectory_curvature, geometry,
@@ -800,8 +862,13 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             controller->onTrajectoryChanged();
             replanned = true;
+            transitionTo(NavigationState::Tracking,
+                         "global replanning succeeded", frame);
+            next_replanning_frame = frame +
+                config.replanning_cooldown_frames + 1;
         }
 
+        transitionTo(NavigationState::Tracking, "tracking active path", frame);
         ++result.metrics.frames_run;
         const double frame_period_seconds =
             static_cast<double>(config.steps_per_frame) *
@@ -886,7 +953,8 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             appendSample(frame, step, command,
                          replanned && step == 0, obstacle,
                          step == 0 ? dstar_ms : 0.0,
-                         step == 0 ? astar_ms : 0.0, false);
+                         step == 0 ? astar_ms : 0.0, false,
+                         navigation_state);
             if (!state_check.safe || !active_map_state_safe ||
                 !predicted_state_safe) {
                 ++result.metrics.collision_steps;
@@ -899,6 +967,8 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             if (supervisor->goalReached(state, trajectory)) {
                 result.metrics.goal_reached = true;
+                transitionTo(NavigationState::GoalReached,
+                             "goal tolerance reached", frame, step);
                 break;
             }
         }
@@ -925,6 +995,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                         : "dynamic pipeline reached the frame limit before the goal");
     }
     result.metrics.status = StatusCode::Success;
+    transitionTo(NavigationState::GoalReached, "goal reached");
     result.message = "dynamic navigation pipeline completed";
     return result;
 }
@@ -936,7 +1007,7 @@ bool saveDynamicTraceCsv(const DynamicPipelineResult& result,
     output << "frame,step,time,x,y,theta,velocity,command_velocity,"
               "command_steering,replanned,obstacle_x,obstacle_y,"
               "dstar_replan_ms,astar_replan_ms,cross_track_error,"
-              "steering_delta,velocity_delta,safe_stop\n";
+              "steering_delta,velocity_delta,safe_stop,navigation_state\n";
     output << std::fixed << std::setprecision(8);
     for (const auto& sample : result.trace) {
         output << sample.frame << ',' << sample.step << ',' << sample.time << ','
@@ -948,7 +1019,8 @@ bool saveDynamicTraceCsv(const DynamicPipelineResult& result,
                << sample.dstar_replan_ms << ',' << sample.astar_replan_ms << ','
                << sample.cross_track_error << ',' << sample.steering_delta << ','
                << sample.velocity_delta << ','
-               << (sample.safe_stop ? 1 : 0) << '\n';
+               << (sample.safe_stop ? 1 : 0) << ','
+               << toString(sample.navigation_state) << '\n';
     }
     return true;
 }
@@ -998,6 +1070,16 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
            << result.metrics.astar_fallback_count << ",\n"
            << "  \"collision_steps\": "
            << result.metrics.collision_steps << ",\n"
+           << "  \"state_transition_count\": "
+           << result.metrics.state_transition_count << ",\n"
+           << "  \"recovery_attempt_count\": "
+           << result.metrics.recovery_attempt_count << ",\n"
+           << "  \"yielding_steps\": "
+           << result.metrics.yielding_steps << ",\n"
+           << "  \"suppressed_replanning_count\": "
+           << result.metrics.suppressed_replanning_count << ",\n"
+           << "  \"final_state\": \""
+           << toString(result.metrics.final_state) << "\",\n"
            << "  \"goal_reached\": "
            << (result.metrics.goal_reached ? "true" : "false") << ",\n"
            << "  \"safe_stop\": "
@@ -1028,7 +1110,22 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     writeJsonNumber(output, result.metrics.prediction_risk_clearance);
     output << ",\n  \"goal_distance\": ";
     writeJsonNumber(output, result.metrics.goal_distance);
-    output << "\n}\n";
+    output << ",\n  \"state_transitions\": [";
+    for (std::size_t index = 0; index < result.state_transitions.size();
+         ++index) {
+        const auto& transition = result.state_transitions[index];
+        output << (index == 0 ? "\n" : ",\n")
+               << "    {\"frame\": " << transition.frame
+               << ", \"step\": " << transition.step
+               << ", \"time\": ";
+        writeJsonNumber(output, transition.time);
+        output << ", \"from\": \"" << toString(transition.from)
+               << "\", \"to\": \"" << toString(transition.to)
+               << "\", \"reason\": \""
+               << escapeJsonString(transition.reason) << "\"}";
+    }
+    if (!result.state_transitions.empty()) output << '\n';
+    output << "  ]\n}\n";
     return true;
 }
 

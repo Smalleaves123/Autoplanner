@@ -59,6 +59,9 @@ void printHelp() {
         << "  --obstacle-ahead N    path samples before inserted obstacle\n"
         << "  --obstacle-margin N   safety cells around generated obstacle\n"
         << "  --max-auto-obstacles N  maximum generated obstacles\n"
+        << "  --max-replanning-retries N retries after a failed replan\n"
+        << "  --replanning-cooldown-frames N minimum frames between replans\n"
+        << "  --recovery-stop-steps N stop-control cycles during recovery\n"
         << "  --obstacle FRAME X Y  externally occupy a cell at frame\n"
         << "  --clear-obstacle FRAME X Y  externally clear a cell at frame\n"
         << "  --perception-updates PATH  tracked obstacle update CSV\n"
@@ -363,6 +366,15 @@ int main(int argc, char** argv) {
                 static_cast<std::size_t>(std::stoul(argv[++i]));
         } else if (arg == "--max-auto-obstacles" && i + 1 < argc) {
             dynamic.max_auto_obstacles =
+                static_cast<std::size_t>(std::stoul(argv[++i]));
+        } else if (arg == "--max-replanning-retries" && i + 1 < argc) {
+            dynamic.max_replanning_retries =
+                static_cast<std::size_t>(std::stoul(argv[++i]));
+        } else if (arg == "--replanning-cooldown-frames" && i + 1 < argc) {
+            dynamic.replanning_cooldown_frames =
+                static_cast<std::size_t>(std::stoul(argv[++i]));
+        } else if (arg == "--recovery-stop-steps" && i + 1 < argc) {
+            dynamic.recovery_stop_steps =
                 static_cast<std::size_t>(std::stoul(argv[++i]));
         } else if ((arg == "--obstacle" || arg == "--clear-obstacle") &&
                    i + 3 < argc) {
