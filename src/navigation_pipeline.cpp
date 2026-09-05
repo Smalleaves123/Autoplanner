@@ -520,6 +520,11 @@ PipelineResult NavigationPipeline::run(
                 result.metrics.maximum_mppi_collision_probability = std::max(
                     result.metrics.maximum_mppi_collision_probability,
                     decision.maximum_collision_probability);
+                result.metrics.mppi_workspace_allocation_count +=
+                    decision.workspace_allocation_count;
+                if (decision.workspace_reused) {
+                    ++result.metrics.mppi_workspace_reuse_count;
+                }
             }
             result.metrics.local_planner_collision_rejections +=
                 decision.dynamic_collision_rejections;
@@ -657,6 +662,10 @@ bool savePipelineMetricsJson(const PipelineResult& result,
     output << ",\n  \"maximum_mppi_collision_probability\": ";
     writeJsonNumber(
         output, result.metrics.maximum_mppi_collision_probability);
+    output << ",\n  \"mppi_workspace_allocation_count\": "
+           << result.metrics.mppi_workspace_allocation_count
+           << ",\n  \"mppi_workspace_reuse_count\": "
+           << result.metrics.mppi_workspace_reuse_count;
     output << ",\n"
            << "  \"local_planner_collision_rejections\": "
            << result.metrics.local_planner_collision_rejections << ",\n"

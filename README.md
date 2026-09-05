@@ -444,6 +444,24 @@ the next cycle's velocity and steering noise within the configured minimum and
 maximum scales. Pipeline metrics report the mean ESS, mean ESS ratio, and most
 recent sampling-noise scale for tuning and regression analysis.
 
+MPPI also keeps its control-sequence and rollout-result buffers between
+control cycles. Pipeline metrics expose the number of MPPI-owned workspace
+expansions and the number of cycles that reused all those buffers. To measure
+the steady-state controller latency and verify that fixed-size cycles do not
+expand this workspace after a warm-up cycle, run:
+
+```bash
+cmake --build --preset test --target mppi_benchmark -j4
+./build/test/apps/mppi_benchmark \
+    --iterations 100 --rollouts 64 --horizon 20
+```
+
+The benchmark reports mean, P50, P95, and P99 latency together with ESS,
+sampling-noise, workspace-expansion, and workspace-reuse diagnostics. A
+non-zero post-warm-up workspace-expansion count makes it fail. This check is
+limited to the rollout buffers owned by MPPI; it does not claim to intercept
+allocations made by the C++ runtime, OpenMP, or other dependencies.
+
 For tracked obstacles with covariance, MPPI can also add an occupancy-risk
 cost using `local_planner.mppi.dynamic_probability_weight`. The probability
 term is computed independently of the collision gate: increasing or disabling

@@ -43,7 +43,7 @@ integration surfaces.
 - [x] Add adaptive sampling variance and effective-sample diagnostics.
 - [x] Add configurable probability/risk costs without weakening hard collision
   rejection.
-- [ ] Reuse rollout buffers and benchmark allocation-free control cycles.
+- [x] Reuse rollout buffers and benchmark allocation-free control cycles.
 - [ ] Evaluate SIMD and optional GPU acceleration after a CPU profiling baseline.
 
 ## Phase 4: Middleware-independent perception

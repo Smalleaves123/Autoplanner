@@ -34,6 +34,8 @@ class DynamicFacadeTests(unittest.TestCase):
         self.assertIn("local_planner_warm_start_count", result.metrics)
         self.assertIn("mean_mppi_effective_sample_ratio", result.metrics)
         self.assertIn("maximum_mppi_collision_probability", result.metrics)
+        self.assertIn("mppi_workspace_allocation_count", result.metrics)
+        self.assertIn("mppi_workspace_reuse_count", result.metrics)
         self.assertIn("navigation_state", result.trace[0])
         self.assertTrue(result.state_transitions)
         self.assertIn("reason", result.state_transitions[0])

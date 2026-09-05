@@ -429,6 +429,11 @@ TEST(MppiLocalPlannerTest, WarmStartsFromPreviousOptimalRollout) {
     EXPECT_FALSE(first.warm_started);
     EXPECT_TRUE(second.warm_started);
     EXPECT_FALSE(reset.warm_started);
+    EXPECT_GT(first.workspace_allocation_count, 0u);
+    EXPECT_EQ(second.workspace_allocation_count, 0u);
+    EXPECT_TRUE(second.workspace_reused);
+    EXPECT_EQ(reset.workspace_allocation_count, 0u);
+    EXPECT_TRUE(reset.workspace_reused);
 }
 
 TEST(MppiLocalPlannerTest, AdaptsNoiseAndReportsEffectiveSampleSize) {
@@ -706,6 +711,8 @@ TEST(NavigationPipelineTest, SupportsMppiLocalPlanner) {
     EXPECT_GT(result.metrics.mppi_diagnostic_count, 0u);
     EXPECT_GT(result.metrics.mean_mppi_effective_sample_size, 0.0);
     EXPECT_GT(result.metrics.mean_mppi_effective_sample_ratio, 0.0);
+    EXPECT_GT(result.metrics.mppi_workspace_allocation_count, 0u);
+    EXPECT_GT(result.metrics.mppi_workspace_reuse_count, 0u);
     EXPECT_GT(result.metrics.local_planner_time_ms, 0.0);
 }
 
@@ -1022,6 +1029,8 @@ TEST(DynamicNavigationPipelineTest, SupportsMppiWithMovingObstacles) {
     EXPECT_GT(result.metrics.mppi_diagnostic_count, 0u);
     EXPECT_GT(result.metrics.mean_mppi_effective_sample_size, 0.0);
     EXPECT_GT(result.metrics.mean_mppi_effective_sample_ratio, 0.0);
+    EXPECT_GT(result.metrics.mppi_workspace_allocation_count, 0u);
+    EXPECT_GT(result.metrics.mppi_workspace_reuse_count, 0u);
     EXPECT_GT(result.metrics.local_planner_time_ms, 0.0);
     EXPECT_GT(result.metrics.moving_obstacle_update_count, 0u);
     EXPECT_TRUE(result.metrics.goal_reached);

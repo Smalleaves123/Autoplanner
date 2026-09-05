@@ -99,6 +99,20 @@ set_target_properties(dynamic_navigation_pipeline_cli PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps
 )
 
+add_executable(mppi_benchmark apps/mppi_benchmark.cpp)
+target_link_libraries(mppi_benchmark PRIVATE robotnav_pipeline)
+set_target_properties(mppi_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps
+)
+
+if(BUILD_TESTS)
+    add_test(NAME test_mppi_benchmark
+             COMMAND mppi_benchmark --iterations 3 --rollouts 16 --horizon 8)
+    set_tests_properties(test_mppi_benchmark PROPERTIES
+                         LABELS "benchmark;integration"
+                         TIMEOUT 60)
+endif()
+
 if(BUILD_TESTS)
     find_package(GTest QUIET)
     if(GTest_FOUND)

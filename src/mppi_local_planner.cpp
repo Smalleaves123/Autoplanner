@@ -208,19 +208,33 @@ MppiDecision MppiLocalPlanner::computeCommand(
                     -simulation_options_.max_steering,
                     simulation_options_.max_steering)};
 
-    struct RolloutResult {
-        bool valid = false;
-        double cost = 0.0;
-        autompc::Control first_command;
-        std::size_t dynamic_collision_rejections = 0;
-        double minimum_dynamic_clearance =
-            std::numeric_limits<double>::infinity();
-        double maximum_collision_probability = 0.0;
-    };
-
     const auto rollout_count = static_cast<std::size_t>(options_.rollouts);
     const auto horizon = static_cast<std::size_t>(options_.horizon);
-    std::vector<autompc::Control> base_controls(horizon, nominal);
+    std::lock_guard<std::mutex> workspace_lock(workspace_mutex_);
+    auto countAllocation = [&decision](const auto& buffer,
+                                       std::size_t required) {
+        if (buffer.capacity() < required) {
+            ++decision.workspace_allocation_count;
+        }
+    };
+    countAllocation(base_controls_, horizon);
+    countAllocation(sampled_controls_, rollout_count * horizon);
+    countAllocation(rollout_results_, rollout_count);
+    countAllocation(weighted_controls_, horizon);
+    countAllocation(optimized_controls_, horizon);
+    decision.workspace_reused =
+        decision.workspace_allocation_count == 0 &&
+        !sampled_controls_.empty();
+    base_controls_.assign(horizon, nominal);
+    sampled_controls_.resize(rollout_count * horizon);
+    rollout_results_.assign(rollout_count, RolloutResult{});
+    weighted_controls_.assign(horizon, autompc::Control{});
+    optimized_controls_.resize(horizon);
+    auto& base_controls = base_controls_;
+    auto& sampled_controls = sampled_controls_;
+    auto& rollout_results = rollout_results_;
+    auto& weighted_controls = weighted_controls_;
+    auto& optimized_controls = optimized_controls_;
     double sampling_noise_scale = 1.0;
     {
         std::lock_guard<std::mutex> lock(warm_start_mutex_);
@@ -243,7 +257,6 @@ MppiDecision MppiLocalPlanner::computeCommand(
         }
     }
     decision.sampling_noise_scale = sampling_noise_scale;
-    std::vector<autompc::Control> sampled_controls(rollout_count * horizon);
     std::mt19937 generator(options_.random_seed);
     std::normal_distribution<double> velocity_distribution(
         0.0, options_.velocity_noise * sampling_noise_scale);
@@ -273,7 +286,6 @@ MppiDecision MppiLocalPlanner::computeCommand(
         }
     }
 
-    std::vector<RolloutResult> rollout_results(rollout_count);
 #ifdef ROBOTNAV_HAS_OPENMP
 #pragma omp parallel for schedule(static)
 #endif
@@ -390,7 +402,6 @@ MppiDecision MppiLocalPlanner::computeCommand(
     const double minimum_cost = decision.score;
     double weight_sum = 0.0;
     double squared_weight_sum = 0.0;
-    std::vector<autompc::Control> weighted_controls(horizon);
     for (std::size_t rollout_index = 0;
          rollout_index < rollout_results.size(); ++rollout_index) {
         const auto& rollout = rollout_results[rollout_index];
@@ -419,7 +430,6 @@ MppiDecision MppiLocalPlanner::computeCommand(
             static_cast<double>(decision.feasible_rollouts),
         0.0, 1.0);
 
-    std::vector<autompc::Control> optimized_controls(horizon);
     for (std::size_t step = 0; step < horizon; ++step) {
         optimized_controls[step].velocity = clampFinite(
             weighted_controls[step].velocity / weight_sum,
@@ -454,7 +464,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
     if (options_.warm_start && best_rollout < rollout_count) {
         std::lock_guard<std::mutex> lock(warm_start_mutex_);
         if (aggregate_valid) {
-            previous_optimal_controls_ = std::move(optimized_controls);
+            previous_optimal_controls_ = optimized_controls;
         } else {
             const auto begin = sampled_controls.begin() +
                 static_cast<std::ptrdiff_t>(best_rollout * horizon);

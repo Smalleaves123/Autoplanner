@@ -32,7 +32,9 @@ public:
                 0.0,
                 0.0,
                 1.0,
-                0.0};
+                0.0,
+                0,
+                false};
     }
 
 private:
@@ -70,7 +72,9 @@ public:
                 decision.effective_sample_size,
                 decision.effective_sample_ratio,
                 decision.sampling_noise_scale,
-                decision.maximum_collision_probability};
+                decision.maximum_collision_probability,
+                decision.workspace_allocation_count,
+                decision.workspace_reused};
     }
 
 private:

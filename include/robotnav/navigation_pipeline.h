@@ -37,6 +37,8 @@ struct PipelineMetrics {
     double mean_mppi_effective_sample_ratio = 0.0;
     double mppi_sampling_noise_scale = 1.0;
     double maximum_mppi_collision_probability = 0.0;
+    std::size_t mppi_workspace_allocation_count = 0;
+    std::size_t mppi_workspace_reuse_count = 0;
     std::size_t local_planner_collision_rejections = 0;
     double local_planner_time_ms = 0.0;
     double minimum_dynamic_obstacle_clearance = 0.0;

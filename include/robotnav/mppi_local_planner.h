@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
 #include <mutex>
 #include <vector>
 
@@ -51,6 +52,8 @@ struct MppiDecision {
     double effective_sample_ratio = 0.0;
     double sampling_noise_scale = 1.0;
     double maximum_collision_probability = 0.0;
+    std::size_t workspace_allocation_count = 0;
+    bool workspace_reused = false;
 };
 
 class MppiLocalPlanner {
@@ -69,12 +72,28 @@ public:
     void resetWarmStart();
 
 private:
+    struct RolloutResult {
+        bool valid = false;
+        double cost = 0.0;
+        autompc::Control first_command;
+        std::size_t dynamic_collision_rejections = 0;
+        double minimum_dynamic_clearance =
+            std::numeric_limits<double>::infinity();
+        double maximum_collision_probability = 0.0;
+    };
+
     const autoplanner::CollisionChecker& collision_checker_;
     autompc::SimulationOptions simulation_options_;
     MppiOptions options_;
     mutable std::mutex warm_start_mutex_;
     mutable std::vector<autompc::Control> previous_optimal_controls_;
     mutable double sampling_noise_scale_ = 1.0;
+    mutable std::mutex workspace_mutex_;
+    mutable std::vector<autompc::Control> base_controls_;
+    mutable std::vector<autompc::Control> sampled_controls_;
+    mutable std::vector<RolloutResult> rollout_results_;
+    mutable std::vector<autompc::Control> weighted_controls_;
+    mutable std::vector<autompc::Control> optimized_controls_;
 };
 
 }  // namespace robotnav

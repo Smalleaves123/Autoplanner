@@ -950,6 +950,11 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                         std::max(
                             result.metrics.maximum_mppi_collision_probability,
                             decision.maximum_collision_probability);
+                    result.metrics.mppi_workspace_allocation_count +=
+                        decision.workspace_allocation_count;
+                    if (decision.workspace_reused) {
+                        ++result.metrics.mppi_workspace_reuse_count;
+                    }
                 }
                 if (std::isfinite(decision.minimum_dynamic_clearance)) {
                     if (result.metrics.minimum_dynamic_obstacle_clearance == 0.0) {
@@ -1120,6 +1125,10 @@ bool saveDynamicMetricsJson(const DynamicPipelineResult& result,
     output << ",\n  \"maximum_mppi_collision_probability\": ";
     writeJsonNumber(
         output, result.metrics.maximum_mppi_collision_probability);
+    output << ",\n  \"mppi_workspace_allocation_count\": "
+           << result.metrics.mppi_workspace_allocation_count
+           << ",\n  \"mppi_workspace_reuse_count\": "
+           << result.metrics.mppi_workspace_reuse_count;
     output << ",\n"
            << "  \"external_update_count\": "
            << result.metrics.external_update_count << ",\n"
