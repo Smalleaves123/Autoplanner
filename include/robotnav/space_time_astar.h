@@ -30,6 +30,13 @@ public:
         const std::vector<MovingObstacle>& moving_obstacles,
         std::size_t start_frame = 0) const;
 
+    autoplanner::PlannerResult planAtPredictionFrame(
+        const autoplanner::GridMap& map,
+        const autoplanner::Point2i& start,
+        const autoplanner::Point2i& goal,
+        const std::vector<MovingObstacle>& moving_obstacles,
+        double start_prediction_frame) const;
+
 private:
     SpaceTimeAStarOptions options_;
 };

@@ -53,17 +53,17 @@ bool canMoveDiagonal(const autoplanner::GridMap& map,
 
 bool predictedFree(const std::vector<MovingObstacle>& obstacles,
                    const autoplanner::Point2i& cell,
-                   std::size_t absolute_frame,
+                   double absolute_frame,
                    double obstacle_margin) {
     return !isPredictedCollision(
         obstacles,
         {static_cast<double>(cell.x), static_cast<double>(cell.y)},
-        static_cast<double>(absolute_frame), obstacle_margin);
+        absolute_frame, obstacle_margin);
 }
 
 double predictedRiskCost(const std::vector<MovingObstacle>& obstacles,
                          const autoplanner::Point2i& cell,
-                         std::size_t absolute_frame,
+                         double absolute_frame,
                          const SpaceTimeAStarOptions& options) {
     if (options.risk_weight <= 0.0 || options.risk_clearance <= 0.0) {
         return 0.0;
@@ -71,7 +71,7 @@ double predictedRiskCost(const std::vector<MovingObstacle>& obstacles,
     const double clearance = predictedObstacleClearance(
         obstacles,
         {static_cast<double>(cell.x), static_cast<double>(cell.y)},
-        static_cast<double>(absolute_frame));
+        absolute_frame);
     if (!std::isfinite(clearance) || clearance >= options.risk_clearance) {
         return 0.0;
     }
@@ -121,6 +121,17 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
     const autoplanner::Point2i& goal,
     const std::vector<MovingObstacle>& moving_obstacles,
     std::size_t start_frame) const {
+    return planAtPredictionFrame(
+        map, start, goal, moving_obstacles,
+        static_cast<double>(start_frame));
+}
+
+autoplanner::PlannerResult SpaceTimeAStarPlanner::planAtPredictionFrame(
+    const autoplanner::GridMap& map,
+    const autoplanner::Point2i& start,
+    const autoplanner::Point2i& goal,
+    const std::vector<MovingObstacle>& moving_obstacles,
+    double start_prediction_frame) const {
     autoplanner::PlannerResult result;
     result.planner_name = "space_time_astar";
     const auto time_begin = std::chrono::steady_clock::now();
@@ -130,7 +141,9 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
         options_.obstacle_margin < 0.0 ||
         !std::isfinite(options_.risk_weight) || options_.risk_weight < 0.0 ||
         !std::isfinite(options_.risk_clearance) ||
-        options_.risk_clearance < 0.0) {
+        options_.risk_clearance < 0.0 ||
+        !std::isfinite(start_prediction_frame) ||
+        start_prediction_frame < 0.0) {
         result.message = "Space-time planner is not initialized.";
         return result;
     }
@@ -141,7 +154,7 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
         }
     }
     if (!map.isFree(start.x, start.y) ||
-        !predictedFree(moving_obstacles, start, start_frame,
+        !predictedFree(moving_obstacles, start, start_prediction_frame,
                        options_.obstacle_margin)) {
         result.message = "Start is invalid or occupied.";
         return result;
@@ -208,7 +221,8 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
             }
             const autoplanner::Point2i next_cell{nx, ny};
             if (!predictedFree(
-                    moving_obstacles, next_cell, start_frame + next_time,
+                    moving_obstacles, next_cell,
+                    start_prediction_frame + static_cast<double>(next_time),
                     options_.obstacle_margin)) {
                 continue;
             }
@@ -222,7 +236,8 @@ autoplanner::PlannerResult SpaceTimeAStarPlanner::plan(
                            ? std::sqrt(2.0)
                            : 1.0);
             const double risk_cost = predictedRiskCost(
-                moving_obstacles, next_cell, start_frame + next_time,
+                moving_obstacles, next_cell,
+                start_prediction_frame + static_cast<double>(next_time),
                 options_);
             const double tentative_g = g_score[current_index] + step_cost +
                                        risk_cost;

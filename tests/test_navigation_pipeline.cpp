@@ -4,7 +4,9 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -14,6 +16,7 @@
 #include "autompc/trajectory/trajectory_generator.h"
 #include "robotnav/dwa_local_planner.h"
 #include "robotnav/dynamic_navigation_pipeline.h"
+#include "robotnav/local_planner_registry.h"
 #include "robotnav/mppi_local_planner.h"
 #include "robotnav/navigation_pipeline.h"
 #include "robotnav/navigation_trace.h"
@@ -60,6 +63,27 @@ robotnav::DynamicPipelineConfig corridorDynamicConfig() {
     config.auto_insert_obstacles = false;
     return config;
 }
+
+class ClockRecordingLocalPlanner final : public robotnav::LocalPlanner {
+public:
+    explicit ClockRecordingLocalPlanner(
+        std::shared_ptr<std::vector<double>> prediction_frames)
+        : prediction_frames_(std::move(prediction_frames)) {}
+
+    robotnav::LocalPlannerDecision computeCommand(
+        const autompc::State&,
+        double,
+        const autompc::Trajectory&,
+        const autompc::Control& nominal_command,
+        const robotnav::DynamicObstacleContext& dynamic_context) const override {
+        prediction_frames_->push_back(
+            dynamic_context.predictionFrameAfter(0.0));
+        return {true, nominal_command};
+    }
+
+private:
+    std::shared_ptr<std::vector<double>> prediction_frames_;
+};
 
 }  // namespace
 
@@ -156,6 +180,53 @@ TEST(DynamicObstaclePredictionTest, RejectsInvalidPredictionConfiguration) {
         map, {1, 1}, {5, 5}, config);
     EXPECT_EQ(result.metrics.status,
               robotnav::StatusCode::InvalidConfiguration);
+}
+
+TEST(DynamicObstaclePredictionTest, UsesSimulationTimeAsCanonicalClock) {
+    const robotnav::DynamicObstacleContext timed_context{
+        nullptr, 99, 2.0, 0.0, 3.0};
+    EXPECT_DOUBLE_EQ(timed_context.predictionFrameAfter(1.0), 2.0);
+
+    const robotnav::DynamicObstacleContext legacy_context{
+        nullptr, 3, 2.0, 0.0};
+    EXPECT_DOUBLE_EQ(legacy_context.predictionFrameAfter(1.0), 3.5);
+    EXPECT_TRUE(std::isnan(robotnav::predictionFrameAtTime(-1.0, 2.0)));
+    EXPECT_TRUE(std::isnan(robotnav::predictionFrameAtTime(1.0, 0.0)));
+}
+
+TEST(DynamicNavigationPipelineTest, AdvancesLocalPlannerPredictionClock) {
+    constexpr const char* planner_name = "clock_recording_test";
+    auto prediction_frames = std::make_shared<std::vector<double>>();
+    auto& registry = robotnav::LocalPlannerRegistry::instance();
+    ASSERT_TRUE(registry.registerLocalPlanner(
+        planner_name,
+        [prediction_frames](
+            const autoplanner::CollisionChecker&,
+            const autompc::SimulationOptions&,
+            const robotnav::DwaOptions&,
+            const robotnav::MppiOptions&) {
+            return std::make_unique<ClockRecordingLocalPlanner>(
+                prediction_frames);
+        }));
+
+    auto config = robotnav::DynamicPipelineConfig{};
+    config.pipeline.local_planner = planner_name;
+    config.pipeline.max_steps = 4;
+    config.frames = 1;
+    config.steps_per_frame = 4;
+    config.auto_insert_obstacles = false;
+    const robotnav::DynamicNavigationPipeline pipeline;
+    const auto result = pipeline.run(
+        loadSimpleMap(), {1, 1}, {20, 20}, config);
+    EXPECT_TRUE(registry.unregisterLocalPlanner(planner_name));
+
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Timeout)
+        << result.message;
+    ASSERT_EQ(prediction_frames->size(), 4u);
+    EXPECT_DOUBLE_EQ((*prediction_frames)[0], 0.0);
+    EXPECT_DOUBLE_EQ((*prediction_frames)[1], 0.25);
+    EXPECT_DOUBLE_EQ((*prediction_frames)[2], 0.5);
+    EXPECT_DOUBLE_EQ((*prediction_frames)[3], 0.75);
 }
 
 TEST(DynamicObstaclePredictionTest, RejectsNonPositiveSemidefiniteCovariance) {

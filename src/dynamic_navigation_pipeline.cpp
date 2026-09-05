@@ -386,6 +386,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
 
     if (map.isEmpty() || config.frames == 0 ||
         config.steps_per_frame == 0 || config.pipeline.max_steps == 0 ||
+        !std::isfinite(config.pipeline.simulation_options.dt) ||
         config.pipeline.simulation_options.dt <= 0.0 ||
         config.recovery_stop_steps == 0) {
         return fail(StatusCode::InvalidConfiguration,
@@ -467,6 +468,14 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     if (!map.isFree(goal.x, goal.y)) {
         return fail(StatusCode::InvalidGoal, "goal cell is invalid");
     }
+    const double frame_period_seconds =
+        static_cast<double>(config.steps_per_frame) *
+        config.pipeline.simulation_options.dt;
+    if (!std::isfinite(frame_period_seconds) ||
+        frame_period_seconds <= 0.0) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "dynamic pipeline time base is invalid");
+    }
 
     autoplanner::GridMap dynamic_map = map;
     PreparedGeometry geometry;
@@ -493,8 +502,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         config.pipeline.dynamic_prediction_risk_weight,
         config.pipeline.dynamic_prediction_risk_clearance});
     auto initial = use_space_time_astar
-        ? space_time_astar.plan(geometry.planning_map, start, goal,
-                                config.moving_obstacles, 0)
+        ? space_time_astar.planAtPredictionFrame(
+              geometry.planning_map, start, goal,
+              config.moving_obstacles,
+              predictionFrameAtTime(time, frame_period_seconds))
         : dstar.plan(geometry.planning_map, start, goal);
     if (use_space_time_astar) {
         ++result.metrics.space_time_planning_count;
@@ -756,9 +767,10 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             const auto current = stateCell(state, geometry.planning_map);
             const auto dstar_begin = std::chrono::steady_clock::now();
             const auto dstar_result = use_space_time_astar
-                ? space_time_astar.plan(
+                ? space_time_astar.planAtPredictionFrame(
                       geometry.planning_map, current, goal,
-                      config.moving_obstacles, frame)
+                      config.moving_obstacles,
+                      predictionFrameAtTime(time, frame_period_seconds))
                 : dstar.replan(geometry.planning_map, current);
             const auto dstar_end = std::chrono::steady_clock::now();
             dstar_ms = std::chrono::duration<double, std::milli>(
@@ -870,15 +882,6 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
 
         transitionTo(NavigationState::Tracking, "tracking active path", frame);
         ++result.metrics.frames_run;
-        const double frame_period_seconds =
-            static_cast<double>(config.steps_per_frame) *
-            config.pipeline.simulation_options.dt;
-        const DynamicObstacleContext dynamic_context{
-            &config.moving_obstacles,
-            frame,
-            frame_period_seconds,
-            geometry.circumscribed_radius +
-                local_dynamic_margin};
         for (std::size_t step = 0;
              step < config.steps_per_frame &&
              result.metrics.steps < config.pipeline.max_steps;
@@ -887,6 +890,12 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             autompc::Control command = controller->compute(
                 state, trajectory, reference);
             if (local_planner) {
+                const DynamicObstacleContext dynamic_context{
+                    &config.moving_obstacles,
+                    frame,
+                    frame_period_seconds,
+                    geometry.circumscribed_radius + local_dynamic_margin,
+                    time};
                 const auto local_planner_begin = std::chrono::steady_clock::now();
                 const auto decision = local_planner->computeCommand(
                     state, simulator.steering(), trajectory, command,
@@ -931,10 +940,9 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
             }
             state = simulator.step(command);
             const auto state_check = supervisor->validateState(state);
-            const double dynamic_frame =
-                static_cast<double>(frame) +
-                static_cast<double>(step + 1) /
-                    static_cast<double>(config.steps_per_frame);
+            const double dynamic_frame = predictionFrameAtTime(
+                time + config.pipeline.simulation_options.dt,
+                frame_period_seconds);
             const double dynamic_clearance = predictedObstacleClearance(
                 config.moving_obstacles, {state.x, state.y}, dynamic_frame);
             if (std::isfinite(dynamic_clearance) &&

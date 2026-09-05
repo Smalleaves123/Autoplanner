@@ -34,7 +34,7 @@ integration surfaces.
 - [x] Record state transitions and failure causes in trace and JSON artifacts.
 - [x] Add deterministic crossing, overtaking, blocked-corridor, and disappearing
   obstacle regression scenarios.
-- [ ] Enforce one time base across prediction, local rollout, simulation, and
+- [x] Enforce one time base across prediction, local rollout, simulation, and
   safety supervision.
 
 ## Phase 3: Risk-aware MPPI

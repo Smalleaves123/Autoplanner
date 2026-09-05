@@ -272,6 +272,12 @@ replanning cooldown, and stop duration are configurable through
 is stored in `trace`, while timestamped transitions and their reasons are
 stored in `state_transitions`.
 
+Dynamic prediction uses elapsed simulation time as its canonical clock. A
+prediction frame spans `steps_per_frame * simulation dt`; Space-Time A*, DWA,
+MPPI, and runtime collision supervision all convert through that same period.
+The original integer-frame `DynamicObstacleContext` construction remains
+supported for application-defined local planners.
+
 See `examples/python/dynamic_nav.py` for a complete scenario.
 
 Dynamic inputs and outputs can be stored as dependency-free JSON replay

@@ -100,8 +100,8 @@ bool dynamicSegmentValid(const autompc::State& start,
                              static_cast<double>(samples);
         const double seconds = start_seconds +
                                 ratio * (end_seconds - start_seconds);
-        const double frame = static_cast<double>(context.current_frame) +
-                             seconds / context.frame_period_seconds;
+        const double frame = context.predictionFrameAfter(seconds);
+        if (!std::isfinite(frame)) return false;
         const autoplanner::Point2d position{
             start.x + ratio * (end.x - start.x),
             start.y + ratio * (end.y - start.y)};
