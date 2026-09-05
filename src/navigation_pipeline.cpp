@@ -14,8 +14,8 @@
 #include "autoplanner/costmap/costmap_2d.h"
 #include "autoplanner/core/path.h"
 #include "autoplanner/core/planner_factory.h"
-#include "autoplanner/smoothing/curvature_constrained_smoother.h"
-#include "autoplanner/smoothing/shortcut_smoother.h"
+#include "autoplanner/smoothing/smoother_factory.h"
+#include "robotnav/local_planner_registry.h"
 #include "robotnav/trajectory_controller.h"
 
 namespace robotnav {
@@ -176,8 +176,8 @@ PipelineResult NavigationPipeline::run(
         return fail(StatusCode::InvalidConfiguration,
                     "kinematic vehicle constraints are invalid");
     }
-    if (config.local_planner != "none" && config.local_planner != "dwa" &&
-        config.local_planner != "mppi") {
+    if (config.local_planner != "none" &&
+        !LocalPlannerRegistry::instance().contains(config.local_planner)) {
         return fail(StatusCode::InvalidConfiguration,
                     "unsupported local planner: " + config.local_planner);
     }
@@ -300,8 +300,8 @@ PipelineResult NavigationPipeline::run(
     const bool path_requires_reverse = preserve_motion_directions &&
         containsReverseMotion(result.planning.motion_directions);
     const bool can_smooth_path = !path_requires_reverse;
-    if (config.smoother != "none" && config.smoother != "shortcut" &&
-        config.smoother != "curvature") {
+    if (config.smoother != "none" &&
+        !autoplanner::SmootherRegistry::instance().contains(config.smoother)) {
         return fail(StatusCode::InvalidConfiguration,
                     "unsupported path smoother configuration");
     }
@@ -331,21 +331,19 @@ PipelineResult NavigationPipeline::run(
                         circumscribed_radius));
             checker_for_smoothing = smoothing_checker.get();
         }
-        if (config.smoother == "shortcut") {
-            autoplanner::ShortcutSmoother smoother(
-                *checker_for_smoothing, config.smoothing_iterations);
-            result.planning.path = smoother.smooth(result.planning.path);
-        } else {
-            const double smoothing_curvature = max_trajectory_curvature > 0.0
-                ? std::min(config.smoothing_max_curvature,
-                           max_trajectory_curvature)
-                : config.smoothing_max_curvature;
-            autoplanner::CurvatureConstrainedSmoother smoother(
-                *checker_for_smoothing,
-                smoothing_curvature,
-                config.smoothing_iterations);
-            result.planning.path = smoother.smooth(result.planning.path);
+        const double smoothing_curvature = max_trajectory_curvature > 0.0
+            ? std::min(config.smoothing_max_curvature,
+                       max_trajectory_curvature)
+            : config.smoothing_max_curvature;
+        const autoplanner::SmootherFactoryOptions smoother_options{
+            config.smoothing_iterations, smoothing_curvature};
+        auto smoother = autoplanner::createSmoother(
+            config.smoother, *checker_for_smoothing, smoother_options);
+        if (!smoother) {
+            return fail(StatusCode::InvalidConfiguration,
+                        "failed to create path smoother: " + config.smoother);
         }
+        result.planning.path = smoother->smooth(result.planning.path);
         if (!pathIsValid()) {
             return fail(StatusCode::Collision,
                         "smoothed path failed collision validation");
@@ -440,16 +438,16 @@ PipelineResult NavigationPipeline::run(
     auto simulation_options = config.simulation_options;
     if (path_requires_reverse) simulation_options.allow_reverse = true;
     autompc::KinematicBicycleSimulator simulator(state, simulation_options);
-    std::unique_ptr<DwaLocalPlanner> dwa;
-    std::unique_ptr<MppiLocalPlanner> mppi;
-    if (config.local_planner == "dwa") {
-        dwa = std::make_unique<DwaLocalPlanner>(
-                *collision_checker, simulation_options,
-                config.dwa_options);
-    } else if (config.local_planner == "mppi") {
-        mppi = std::make_unique<MppiLocalPlanner>(
-                *collision_checker, simulation_options,
-                config.mppi_options);
+    std::unique_ptr<LocalPlanner> local_planner;
+    if (config.local_planner != "none") {
+        local_planner = createLocalPlanner(
+            config.local_planner, *collision_checker, simulation_options,
+            config.dwa_options, config.mppi_options);
+        if (!local_planner) {
+            return fail(StatusCode::InvalidConfiguration,
+                        "failed to create local planner: " +
+                            config.local_planner);
+        }
     }
     auto controller = createController(
         config.controller, config.simulation_options);
@@ -469,26 +467,16 @@ PipelineResult NavigationPipeline::run(
         autompc::Control command = controller->compute(
             state, result.trajectory, reference);
 
-        if (dwa) {
+        if (local_planner) {
             const auto local_planner_begin = std::chrono::steady_clock::now();
-            const auto decision = dwa->computeCommand(
+            const auto decision = local_planner->computeCommand(
                 state, simulator.steering(), result.trajectory, command);
             result.metrics.local_planner_time_ms +=
                 std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - local_planner_begin)
                     .count();
-            if (!decision.feasible) {
-                result.metrics.safe_stop = true;
-                return fail(StatusCode::ControllerInfeasible,
-                            "DWA found no collision-free local command");
-            }
-            if (std::abs(decision.command.velocity - command.velocity) >
-                    1e-9 ||
-                std::abs(decision.command.steering - command.steering) >
-                    1e-9) {
-                ++result.metrics.local_planner_adjustments;
-            }
-            command = decision.command;
+            result.metrics.local_planner_rollouts +=
+                decision.feasible_rollouts;
             result.metrics.local_planner_collision_rejections +=
                 decision.dynamic_collision_rejections;
             if (std::isfinite(decision.minimum_dynamic_clearance)) {
@@ -501,22 +489,11 @@ PipelineResult NavigationPipeline::run(
                                  decision.minimum_dynamic_clearance);
                 }
             }
-        } else if (mppi) {
-            const auto local_planner_begin = std::chrono::steady_clock::now();
-            const auto decision = mppi->computeCommand(
-                state, simulator.steering(), result.trajectory, command);
-            result.metrics.local_planner_time_ms +=
-                std::chrono::duration<double, std::milli>(
-                    std::chrono::steady_clock::now() - local_planner_begin)
-                    .count();
-            result.metrics.local_planner_rollouts +=
-                decision.feasible_rollouts;
-            result.metrics.local_planner_collision_rejections +=
-                decision.dynamic_collision_rejections;
             if (!decision.feasible) {
                 result.metrics.safe_stop = true;
                 return fail(StatusCode::ControllerInfeasible,
-                            "MPPI found no collision-free local command");
+                            config.local_planner +
+                                " found no collision-free local command");
             }
             if (std::abs(decision.command.velocity - command.velocity) >
                     1e-9 ||

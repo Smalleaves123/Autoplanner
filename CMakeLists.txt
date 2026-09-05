@@ -46,6 +46,7 @@ add_subdirectory(autompc)
 add_library(robotnav_pipeline STATIC
     src/dwa_local_planner.cpp
     src/dynamic_navigation_pipeline.cpp
+    src/local_planner_registry.cpp
     src/mppi_local_planner.cpp
     src/navigation_pipeline.cpp
     src/navigation_trace.cpp

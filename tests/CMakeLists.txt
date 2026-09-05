@@ -1,46 +1,26 @@
 find_package(GTest REQUIRED)
 
-add_executable(test_navigation_pipeline test_navigation_pipeline.cpp)
-target_link_libraries(test_navigation_pipeline PRIVATE
-    robotnav_pipeline GTest::GTest GTest::Main)
-target_include_directories(test_navigation_pipeline PRIVATE
-    ${CMAKE_SOURCE_DIR}/include)
-target_compile_options(test_navigation_pipeline PRIVATE -Wall -Wextra -Wpedantic)
+function(add_robotnav_test name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE
+        robotnav_pipeline GTest::GTest GTest::Main)
+    target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
 
-if(TARGET GTest::gtest_main)
-    set_property(TARGET test_navigation_pipeline APPEND PROPERTY BUILD_RPATH
-                 "$<TARGET_FILE_DIR:GTest::gtest_main>")
-elseif(TARGET GTest::Main)
-    get_target_property(gtest_main_type GTest::Main TYPE)
-    if(NOT gtest_main_type STREQUAL "INTERFACE_LIBRARY")
-        set_property(TARGET test_navigation_pipeline APPEND PROPERTY BUILD_RPATH
-                     "$<TARGET_FILE_DIR:GTest::Main>")
+    if(TARGET GTest::gtest_main)
+        set_property(TARGET ${name} APPEND PROPERTY BUILD_RPATH
+                     "$<TARGET_FILE_DIR:GTest::gtest_main>")
+    elseif(TARGET GTest::Main)
+        get_target_property(gtest_main_type GTest::Main TYPE)
+        if(NOT gtest_main_type STREQUAL "INTERFACE_LIBRARY")
+            set_property(TARGET ${name} APPEND PROPERTY BUILD_RPATH
+                         "$<TARGET_FILE_DIR:GTest::Main>")
+        endif()
     endif()
-endif()
 
-add_test(NAME test_navigation_pipeline
-         COMMAND test_navigation_pipeline
-         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endfunction()
 
-add_executable(test_trajectory_controller test_trajectory_controller.cpp)
-target_link_libraries(test_trajectory_controller PRIVATE
-    robotnav_pipeline GTest::GTest GTest::Main)
-target_include_directories(test_trajectory_controller PRIVATE
-    ${CMAKE_SOURCE_DIR}/include)
-target_compile_options(test_trajectory_controller PRIVATE
-    -Wall -Wextra -Wpedantic)
-
-if(TARGET GTest::gtest_main)
-    set_property(TARGET test_trajectory_controller APPEND PROPERTY BUILD_RPATH
-                 "$<TARGET_FILE_DIR:GTest::gtest_main>")
-elseif(TARGET GTest::Main)
-    get_target_property(gtest_main_type GTest::Main TYPE)
-    if(NOT gtest_main_type STREQUAL "INTERFACE_LIBRARY")
-        set_property(TARGET test_trajectory_controller APPEND PROPERTY BUILD_RPATH
-                     "$<TARGET_FILE_DIR:GTest::Main>")
-    endif()
-endif()
-
-add_test(NAME test_trajectory_controller
-         COMMAND test_trajectory_controller
-         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_robotnav_test(test_navigation_pipeline test_navigation_pipeline.cpp)
+add_robotnav_test(test_trajectory_controller test_trajectory_controller.cpp)
+add_robotnav_test(test_local_planner_registry test_local_planner_registry.cpp)

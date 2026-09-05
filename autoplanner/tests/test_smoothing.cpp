@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -9,6 +10,7 @@
 #include "autoplanner/smoothing/bezier_smoother.h"
 #include "autoplanner/smoothing/bspline_smoother.h"
 #include "autoplanner/smoothing/curvature_constrained_smoother.h"
+#include "autoplanner/smoothing/smoother_factory.h"
 #include "test_file_utils.h"
 
 using namespace autoplanner;
@@ -20,6 +22,16 @@ protected:
     }
 
     GridMap map_;
+};
+
+class RegisteredTestSmoother final : public PathSmoother {
+public:
+    std::vector<Point2d> smooth(
+        const std::vector<Point2d>& path) override {
+        return path;
+    }
+
+    std::string name() const override { return "registered_test"; }
 };
 
 TEST_F(SmoothingTest, ShortcutReducesPath) {
@@ -161,6 +173,42 @@ TEST_F(SmoothingTest, CurvatureShortPathUnchanged) {
     auto smoothed = smoother.smooth(path);
 
     EXPECT_EQ(smoothed.size(), 2u);
+}
+
+TEST_F(SmoothingTest, RegistryCreatesCollisionSafeSmoothers) {
+    GridCollisionChecker checker(map_);
+    const auto names = availableSmoothers();
+    EXPECT_NE(std::find(names.begin(), names.end(), "shortcut"), names.end());
+    EXPECT_NE(std::find(names.begin(), names.end(), "curvature"), names.end());
+
+    SmootherFactoryOptions options;
+    options.max_iterations = 10;
+    options.max_curvature = 0.25;
+    EXPECT_NE(createSmoother("shortcut", checker, options), nullptr);
+    EXPECT_NE(createSmoother("curvature", checker, options), nullptr);
+    EXPECT_EQ(createSmoother("does_not_exist", checker, options), nullptr);
+}
+
+TEST_F(SmoothingTest, RegistryAcceptsApplicationSmoother) {
+    auto& registry = SmootherRegistry::instance();
+    const std::string name = "registered_test";
+    registry.unregisterSmoother(name);
+    EXPECT_TRUE(registry.registerSmoother(
+        name, [](const CollisionChecker&, const SmootherFactoryOptions&) {
+            return std::make_unique<RegisteredTestSmoother>();
+        }));
+    EXPECT_FALSE(registry.registerSmoother("none", {}));
+
+    GridCollisionChecker checker(map_);
+    auto smoother = createSmoother(name, checker);
+    ASSERT_NE(smoother, nullptr);
+    const std::vector<Point2d> path{{1.0, 1.0}, {2.0, 2.0}};
+    const auto smoothed = smoother->smooth(path);
+    ASSERT_EQ(smoothed.size(), path.size());
+    EXPECT_DOUBLE_EQ(smoothed.front().x, path.front().x);
+    EXPECT_DOUBLE_EQ(smoothed.back().y, path.back().y);
+
+    EXPECT_TRUE(registry.unregisterSmoother(name));
 }
 
 TEST_F(SmoothingTest, BezierShortPathUnchanged) {

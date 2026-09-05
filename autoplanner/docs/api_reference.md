@@ -142,6 +142,31 @@ through this registry. Stateful controllers may override `reset()` and
 
 ---
 
+## Local Planner and Smoother Registries
+
+DWA and MPPI implement the common `robotnav::LocalPlanner` interface. A local
+planner receives the nominal controller command plus the current dynamic
+obstacle context and returns a normalized decision containing feasibility,
+the adjusted command, rollout count, collision rejections, and clearance.
+
+Applications register additional implementations through
+`robotnav::LocalPlannerRegistry`; both navigation pipelines accept registered
+names without source changes.
+
+Collision-safe path smoothers use `autoplanner::SmootherRegistry`:
+
+```cpp
+SmootherFactoryOptions options;
+options.max_iterations = 100;
+options.max_curvature = 0.4;
+auto smoother = createSmoother("curvature", checker, options);
+```
+
+The reserved name `none` means that the corresponding optional stage is
+disabled and cannot be replaced by a registry entry.
+
+---
+
 ## PlannerResult
 
 ```cpp

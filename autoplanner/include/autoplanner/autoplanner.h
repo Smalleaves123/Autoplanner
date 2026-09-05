@@ -55,6 +55,7 @@
 #include "autoplanner/smoothing/bezier_smoother.h"
 #include "autoplanner/smoothing/bspline_smoother.h"
 #include "autoplanner/smoothing/gradient_smoother.h"
+#include "autoplanner/smoothing/smoother_factory.h"
 
 // ── Metrics ────────────────────────────────────────────────────────
 #include "autoplanner/metrics/path_metrics.h"

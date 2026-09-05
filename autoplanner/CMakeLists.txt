@@ -51,6 +51,7 @@ add_library(autoplanner STATIC
 
     # smoothing
     src/smoothing/shortcut_smoother.cpp
+    src/smoothing/smoother_factory.cpp
     src/smoothing/bezier_smoother.cpp
     src/smoothing/bspline_smoother.cpp
     src/smoothing/curvature_constrained_smoother.cpp

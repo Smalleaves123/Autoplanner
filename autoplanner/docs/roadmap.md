@@ -21,7 +21,7 @@ integration surfaces.
   registry while preserving `createPlanner()`.
 - [x] Expose registered planner discovery to the native Python backend.
 - [x] Introduce a common trajectory-controller adapter and controller registry.
-- [ ] Introduce local-planner and path-smoother registries.
+- [x] Introduce local-planner and path-smoother registries.
 - [ ] Centralize configuration validation and expose available component names.
 - [ ] Add examples showing an application-defined planner and controller.
 
