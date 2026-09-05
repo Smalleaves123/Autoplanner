@@ -1,7 +1,11 @@
 #pragma once
 
+#include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "autoplanner/core/planner_base.h"
 
@@ -33,11 +37,45 @@ struct PlannerFactoryOptions {
     double collision_check_resolution = 0.25;
 };
 
+// Runtime registry used by the built-in factory and by applications that
+// provide their own planners. Registration is process-local and thread-safe;
+// factories are invoked without holding the registry lock.
+class PlannerRegistry {
+public:
+    using Factory = std::function<std::unique_ptr<PlannerBase>(
+        const PlannerFactoryOptions&, const Costmap2D*)>;
+
+    static PlannerRegistry& instance();
+
+    // Register a planner under a stable name. Returns false for an empty name,
+    // an empty factory, or an existing name unless replace is true.
+    bool registerPlanner(const std::string& name,
+                         Factory factory,
+                         bool replace = false);
+    bool unregisterPlanner(const std::string& name);
+    bool contains(const std::string& name) const;
+    std::vector<std::string> availablePlanners() const;
+
+    std::unique_ptr<PlannerBase> create(
+        const std::string& name,
+        const PlannerFactoryOptions& options = {},
+        const Costmap2D* costmap = nullptr) const;
+
+private:
+    PlannerRegistry();
+
+    mutable std::mutex mutex_;
+    std::map<std::string, Factory> factories_;
+};
+
 // Create any supported planner using one stable name. Returns nullptr for an
 // unknown planner name.
 std::unique_ptr<PlannerBase> createPlanner(
     const std::string& planner_name,
     const PlannerFactoryOptions& options = {},
     const Costmap2D* costmap = nullptr);
+
+// Return all planner names currently registered in deterministic order.
+std::vector<std::string> availablePlanners();
 
 }  // namespace autoplanner

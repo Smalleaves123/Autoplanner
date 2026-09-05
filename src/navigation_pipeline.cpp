@@ -8,10 +8,6 @@
 #include <limits>
 #include <memory>
 
-#include "autompc/controllers/controllers.h"
-#ifdef AUTOMPC_HAS_EIGEN
-#include "autompc/controllers/mpc_controller.h"
-#endif
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autoplanner/collision/footprint_collision_checker.h"
 #include "autoplanner/collision/grid_collision_checker.h"
@@ -20,6 +16,7 @@
 #include "autoplanner/core/planner_factory.h"
 #include "autoplanner/smoothing/curvature_constrained_smoother.h"
 #include "autoplanner/smoothing/shortcut_smoother.h"
+#include "robotnav/trajectory_controller.h"
 
 namespace robotnav {
 namespace {
@@ -454,58 +451,23 @@ PipelineResult NavigationPipeline::run(
                 *collision_checker, simulation_options,
                 config.mppi_options);
     }
-    std::unique_ptr<autompc::PIDController> pid;
-    std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
-    std::unique_ptr<autompc::StanleyController> stanley;
-#ifdef AUTOMPC_HAS_EIGEN
-    std::unique_ptr<autompc::MPCController> mpc;
+    auto controller = createController(
+        config.controller, config.simulation_options);
+    if (!controller) {
+#ifndef AUTOMPC_HAS_EIGEN
+        if (config.controller == "mpc") {
+            return fail(StatusCode::InvalidConfiguration,
+                        "MPC controller requires Eigen3");
+        }
 #endif
-
-    if (config.controller == "pid") {
-        pid = std::make_unique<autompc::PIDController>(
-            1.0, 0.0, 0.0, 2.0, 0.0, 0.5,
-            config.simulation_options.wheelbase);
-    } else if (config.controller == "pure_pursuit") {
-        pure_pursuit = std::make_unique<autompc::PurePursuitController>(
-            2.0, config.simulation_options.wheelbase);
-    } else if (config.controller == "stanley") {
-        stanley = std::make_unique<autompc::StanleyController>(
-            0.5, config.simulation_options.wheelbase);
-    } else if (config.controller == "mpc") {
-#ifdef AUTOMPC_HAS_EIGEN
-        mpc = std::make_unique<autompc::MPCController>(
-            15, config.simulation_options.dt,
-            config.simulation_options.wheelbase,
-            config.simulation_options.max_velocity,
-            config.simulation_options.max_steering,
-            config.simulation_options.max_acceleration,
-            config.simulation_options.max_deceleration,
-            config.simulation_options.max_steering_rate);
-#else
-        return fail(StatusCode::InvalidConfiguration,
-                    "MPC controller requires Eigen3");
-#endif
-    } else {
         return fail(StatusCode::InvalidConfiguration,
                     "unknown controller: " + config.controller);
     }
 
     for (std::size_t step = 0; step < config.max_steps; ++step) {
         const auto reference = closestReferencePoint(result.trajectory, state);
-        autompc::Control command;
-        if (pid) {
-            command = pid->compute(state, reference,
-                                   config.simulation_options.dt);
-        } else if (pure_pursuit) {
-            command = pure_pursuit->compute(
-                state, result.trajectory, reference.v);
-        } else if (stanley) {
-            command = stanley->compute(state, reference, reference.v);
-        } else {
-#ifdef AUTOMPC_HAS_EIGEN
-            command = mpc->compute(state, result.trajectory, reference.v);
-#endif
-        }
+        autompc::Control command = controller->compute(
+            state, result.trajectory, reference);
 
         if (dwa) {
             const auto local_planner_begin = std::chrono::steady_clock::now();

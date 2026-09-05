@@ -2,6 +2,10 @@
 
 Monorepo for mobile robot navigation algorithms — path planning + trajectory tracking.
 
+RobotNav is intentionally ROS-free. Its integration surfaces are the C++ API,
+Python package, command-line tools, versioned replay files, and simulation
+backends. See the [development roadmap](autoplanner/docs/roadmap.md).
+
 ## Projects
 
 | Project | Description |

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import robotnav
@@ -13,6 +14,25 @@ MAP = ROOT / "autoplanner" / "data" / "maps" / "simple_50x50.txt"
 
 
 class PlanningFacadeTests(unittest.TestCase):
+    def test_available_planners_comes_from_native_registry(self) -> None:
+        import autoplanner
+
+        self.assertEqual(
+            robotnav.available_planners(),
+            tuple(autoplanner.available_planners()),
+        )
+        self.assertIn("astar", robotnav.available_planners())
+
+    def test_available_planners_has_pre_registry_fallback(self) -> None:
+        import robotnav.planning as planning
+
+        with mock.patch.object(
+            planning,
+            "_backend",
+            side_effect=robotnav.BackendUnavailableError("unavailable"),
+        ):
+            self.assertIn("astar", planning.available_planners())
+
     def test_plan_from_path_returns_python_native_result(self) -> None:
         result = robotnav.plan(
             MAP, (1, 1), (20, 20),

@@ -182,6 +182,8 @@ PYBIND11_MODULE(_autoplanner, m) {
 
     m.def("create_planner", &makePlanner,
           py::arg("name"), py::arg("options") = PlannerFactoryOptions{});
+    m.def("available_planners", &availablePlanners,
+          "Return planner names registered by the C++ backend.");
     m.def("plan", &planNamed,
           py::arg("name"), py::arg("map"), py::arg("start"), py::arg("goal"),
           py::arg("options") = PlannerFactoryOptions{});

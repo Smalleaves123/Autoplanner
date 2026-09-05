@@ -8,10 +8,6 @@
 #include <limits>
 #include <memory>
 
-#include "autompc/controllers/controllers.h"
-#ifdef AUTOMPC_HAS_EIGEN
-#include "autompc/controllers/mpc_controller.h"
-#endif
 #include "autompc/simulation/kinematic_bicycle.h"
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autoplanner/collision/footprint_collision_checker.h"
@@ -25,6 +21,7 @@
 #include "autoplanner/smoothing/shortcut_smoother.h"
 #include "robotnav/safety_supervisor.h"
 #include "robotnav/space_time_astar.h"
+#include "robotnav/trajectory_controller.h"
 
 namespace robotnav {
 namespace {
@@ -557,37 +554,15 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
     }
     autompc::KinematicBicycleSimulator simulator(
         state, config.pipeline.simulation_options);
-    std::unique_ptr<autompc::PIDController> pid;
-    std::unique_ptr<autompc::PurePursuitController> pure_pursuit;
-    std::unique_ptr<autompc::StanleyController> stanley;
-#ifdef AUTOMPC_HAS_EIGEN
-    std::unique_ptr<autompc::MPCController> mpc;
+    auto controller = createController(
+        config.pipeline.controller, config.pipeline.simulation_options);
+    if (!controller) {
+#ifndef AUTOMPC_HAS_EIGEN
+        if (config.pipeline.controller == "mpc") {
+            return fail(StatusCode::InvalidConfiguration,
+                        "MPC controller requires Eigen3");
+        }
 #endif
-    if (config.pipeline.controller == "pid") {
-        pid = std::make_unique<autompc::PIDController>(
-            1.0, 0.0, 0.0, 2.0, 0.0, 0.5,
-            config.pipeline.simulation_options.wheelbase);
-    } else if (config.pipeline.controller == "pure_pursuit") {
-        pure_pursuit = std::make_unique<autompc::PurePursuitController>(
-            2.0, config.pipeline.simulation_options.wheelbase);
-    } else if (config.pipeline.controller == "stanley") {
-        stanley = std::make_unique<autompc::StanleyController>(
-            0.5, config.pipeline.simulation_options.wheelbase);
-    } else if (config.pipeline.controller == "mpc") {
-#ifdef AUTOMPC_HAS_EIGEN
-        mpc = std::make_unique<autompc::MPCController>(
-            15, config.pipeline.simulation_options.dt,
-            config.pipeline.simulation_options.wheelbase,
-            config.pipeline.simulation_options.max_velocity,
-            config.pipeline.simulation_options.max_steering,
-            config.pipeline.simulation_options.max_acceleration,
-            config.pipeline.simulation_options.max_deceleration,
-            config.pipeline.simulation_options.max_steering_rate);
-#else
-        return fail(StatusCode::InvalidConfiguration,
-                    "MPC controller requires Eigen3");
-#endif
-    } else {
         return fail(StatusCode::InvalidConfiguration,
                     "unknown controller: " + config.pipeline.controller);
     }
@@ -812,10 +787,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 return fail(StatusCode::InvalidTrajectory,
                             "replanned trajectory violates the configured turning-radius constraint");
             }
-            if (pid) pid->reset();
-#ifdef AUTOMPC_HAS_EIGEN
-            if (mpc) mpc->resetReferenceProgress();
-#endif
+            controller->onTrajectoryChanged();
             replanned = true;
         }
 
@@ -834,20 +806,8 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
              result.metrics.steps < config.pipeline.max_steps;
              ++step) {
             const auto reference = closestReference(trajectory, state);
-            autompc::Control command;
-            if (pid) {
-                command = pid->compute(
-                    state, reference, config.pipeline.simulation_options.dt);
-            } else if (pure_pursuit) {
-                command = pure_pursuit->compute(
-                    state, trajectory, reference.v);
-            } else if (stanley) {
-                command = stanley->compute(state, reference, reference.v);
-            } else {
-#ifdef AUTOMPC_HAS_EIGEN
-                command = mpc->compute(state, trajectory, reference.v);
-#endif
-            }
+            autompc::Control command = controller->compute(
+                state, trajectory, reference);
             if (dwa) {
                 const auto local_planner_begin = std::chrono::steady_clock::now();
                 const auto decision = dwa->computeCommand(

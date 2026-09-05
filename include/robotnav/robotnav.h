@@ -11,3 +11,4 @@
 #include "robotnav/scenario_config.h"
 #include "robotnav/space_time_astar.h"
 #include "robotnav/status.h"
+#include "robotnav/trajectory_controller.h"

@@ -187,8 +187,15 @@ class Planner:
 def available_planners() -> tuple[str, ...]:
     """Return planner names accepted by the current C++ factory."""
 
-    # Keep this list explicit and stable for UI/autocomplete callers.  The
-    # native factory remains authoritative and reports unknown names.
+    try:
+        backend = _backend()
+    except BackendUnavailableError:
+        backend = None
+    if backend is not None and hasattr(backend, "available_planners"):
+        return tuple(str(name) for name in backend.available_planners())
+
+    # Compatibility fallback for extension modules built before the registry
+    # API was introduced.
     return (
         "astar", "weighted_astar", "improved_astar", "dijkstra", "jps",
         "dstar_lite", "rrt", "rrt_star", "informed_rrt_star", "bi_rrt",

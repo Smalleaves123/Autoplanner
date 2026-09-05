@@ -52,6 +52,7 @@ add_library(robotnav_pipeline STATIC
     src/safety_supervisor.cpp
     src/scenario_config.cpp
     src/space_time_astar.cpp
+    src/trajectory_controller.cpp
 )
 target_include_directories(robotnav_pipeline PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

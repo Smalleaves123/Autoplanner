@@ -90,6 +90,58 @@ All planners implement this interface.
 
 ---
 
+## Planner Registry
+
+Built-in and application-defined planners share one process-local registry.
+The legacy `createPlanner()` function delegates to this registry, so existing
+callers remain compatible.
+
+```cpp
+auto& registry = PlannerRegistry::instance();
+registry.registerPlanner(
+    "my_planner",
+    [](const PlannerFactoryOptions& options, const Costmap2D* costmap) {
+        return std::make_unique<MyPlanner>(options, costmap);
+    });
+
+auto planner = createPlanner("my_planner");
+const auto names = availablePlanners();
+```
+
+Registration and discovery are thread-safe. A factory is invoked after the
+registry lock is released, so it may safely perform non-trivial construction.
+Names are listed in deterministic lexicographic order. Registering a duplicate
+name fails unless `replace=true` is supplied.
+
+---
+
+## Navigation Controller Registry
+
+The top-level RobotNav pipeline adapts PID, Pure Pursuit, Stanley, and optional
+MPC controllers to one interface:
+
+```cpp
+class MyController : public robotnav::TrajectoryController {
+public:
+    autompc::Control compute(
+        const autompc::State& state,
+        const autompc::Trajectory& trajectory,
+        const autompc::TrajectoryPoint& nearest_reference) override;
+};
+
+robotnav::ControllerRegistry::instance().registerController(
+    "my_controller",
+    [](const autompc::SimulationOptions&) {
+        return std::make_unique<MyController>();
+    });
+```
+
+Both `NavigationPipeline` and `DynamicNavigationPipeline` resolve controllers
+through this registry. Stateful controllers may override `reset()` and
+`onTrajectoryChanged()` lifecycle hooks.
+
+---
+
 ## PlannerResult
 
 ```cpp
