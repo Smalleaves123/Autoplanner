@@ -210,6 +210,14 @@ Adapters should validate at ingestion and preserve `source_id`, `sequence`,
 2-D world values in the named frame and timestamps are signed nanoseconds from
 the adapter's documented clock domain.
 
+`robotnav/perception/occupancy_grid.h` provides bounded log-odds ray
+integration with explicit unknown/free/occupied states and configurable
+unknown-cell export policy. `robotnav/perception/obstacle_tracker.h` provides
+a deterministic nearest-neighbour tracker with constant-velocity prediction,
+tentative/confirmed/coasting lifecycle states, missed-observation expiry, and
+timestamp-regression rejection. Both kernels reject invalid or mismatched
+frames before mutating state.
+
 ---
 
 ## PlannerResult

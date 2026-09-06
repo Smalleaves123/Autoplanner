@@ -53,6 +53,8 @@ add_library(robotnav_pipeline STATIC
     src/mppi_local_planner.cpp
     src/navigation_pipeline.cpp
     src/navigation_trace.cpp
+    src/obstacle_tracker.cpp
+    src/occupancy_grid.cpp
     src/perception_types.cpp
     src/safety_supervisor.cpp
     src/scenario_config.cpp

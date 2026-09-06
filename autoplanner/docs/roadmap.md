@@ -49,7 +49,7 @@ integration surfaces.
 ## Phase 4: Middleware-independent perception
 
 - [x] Define a versioned C++ `SensorFrame` and timestamped obstacle-track API.
-- [ ] Move occupancy integration and tracking kernels from the Python prototype
+- [x] Move occupancy integration and tracking kernels from the Python prototype
   into reusable C++ modules.
 - [ ] Keep CSV and JSON replay adapters and add stream/callback adapters.
 - [ ] Add Kalman and interacting-multiple-model prediction baselines.

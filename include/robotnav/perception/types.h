@@ -118,6 +118,7 @@ enum class ValidationError : std::uint8_t {
     InvalidTrackCounters,
     DuplicateTrackId,
     InconsistentTrackFrame,
+    InconsistentFrameId,
 };
 
 constexpr std::string_view toString(ValidationError error) noexcept {
@@ -141,6 +142,8 @@ constexpr std::string_view toString(ValidationError error) noexcept {
         case ValidationError::DuplicateTrackId: return "duplicate_track_id";
         case ValidationError::InconsistentTrackFrame:
             return "inconsistent_track_frame";
+        case ValidationError::InconsistentFrameId:
+            return "inconsistent_frame_id";
     }
     return "non_finite_value";
 }
