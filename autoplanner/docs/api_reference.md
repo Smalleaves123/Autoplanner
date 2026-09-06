@@ -188,6 +188,30 @@ if (!validation.valid) {
 
 ---
 
+## Middleware-independent perception types
+
+`robotnav/perception/types.h` defines the stable C++ boundary between sensor
+adapters, mapping, tracking, prediction, and navigation. It uses plain C++17
+types and does not depend on a transport or middleware runtime.
+
+- `SensorFrame` carries a schema version, sequence number, nanosecond
+  timestamp, coordinate frame, sensor source, pose, and 2-D beam endpoints.
+- `ObstacleTrack` carries a timestamped kinematic state, last-observation
+  timestamp, radius, position covariance, confidence, counters, and lifecycle
+  state.
+- `ObstacleTrackFrame` is a coherent snapshot whose estimates share a
+  timestamp and coordinate frame.
+- `validate()` rejects unsupported schema versions, non-finite geometry,
+  invalid covariance, inconsistent timestamps, duplicate track IDs, and
+  malformed lifecycle counters using stable `ValidationError` values.
+
+Adapters should validate at ingestion and preserve `source_id`, `sequence`,
+`timestamp_ns`, and `frame_id` in replay artifacts. Version 1 coordinates are
+2-D world values in the named frame and timestamps are signed nanoseconds from
+the adapter's documented clock domain.
+
+---
+
 ## PlannerResult
 
 ```cpp
