@@ -24,7 +24,7 @@ integration surfaces.
 - [x] Introduce local-planner and path-smoother registries.
 - [x] Centralize component selection validation and expose available component
   names through the C++ catalog.
-- [ ] Add examples showing an application-defined planner and controller.
+- [x] Add examples showing an application-defined planner and controller.
 
 ## Phase 2: Dynamic navigation resilience
 

@@ -114,11 +114,25 @@ set_target_properties(mppi_benchmark PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps
 )
 
+add_executable(custom_components_example examples/custom_components.cpp)
+target_link_libraries(custom_components_example PRIVATE robotnav_pipeline)
+target_compile_options(custom_components_example PRIVATE
+    -Wall -Wextra -Wpedantic)
+set_target_properties(custom_components_example PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
+)
+
 if(BUILD_TESTS)
     add_test(NAME test_mppi_benchmark
              COMMAND mppi_benchmark --iterations 3 --rollouts 16 --horizon 8)
     set_tests_properties(test_mppi_benchmark PROPERTIES
                          LABELS "benchmark;integration"
+                         TIMEOUT 60)
+    add_test(NAME test_custom_components_example
+             COMMAND custom_components_example
+                     ${CMAKE_SOURCE_DIR}/autoplanner/data/maps/simple_50x50.txt)
+    set_tests_properties(test_custom_components_example PROPERTIES
+                         LABELS "example;integration"
                          TIMEOUT 60)
 endif()
 

@@ -140,6 +140,16 @@ Both `NavigationPipeline` and `DynamicNavigationPipeline` resolve controllers
 through this registry. Stateful controllers may override `reset()` and
 `onTrajectoryChanged()` lifecycle hooks.
 
+The buildable `custom_components_example` demonstrates an application-owned
+planner and controller together, including registration, discovery through
+the existing factory helpers, execution, and cleanup:
+
+```bash
+cmake --preset release
+cmake --build --preset release --target custom_components_example -j4
+./build/release/examples/custom_components_example
+```
+
 ---
 
 ## Local Planner and Smoother Registries
