@@ -218,6 +218,12 @@ tentative/confirmed/coasting lifecycle states, missed-observation expiry, and
 timestamp-regression rejection. Both kernels reject invalid or mismatched
 frames before mutating state.
 
+`robotnav/perception/frame_stream.h` supplies synchronous validated callback
+dispatchers and bounded thread-safe frame streams for both sensor and track
+frames. Dispatchers copy their subscriber set before invocation, permitting
+reentrant subscription changes. Buffers make overload behavior explicit with
+either drop-oldest or reject-newest policies and expose both counters.
+
 ---
 
 ## PlannerResult
