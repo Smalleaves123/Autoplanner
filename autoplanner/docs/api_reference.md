@@ -298,6 +298,20 @@ arguments.
 case definitions are saved before execution, and the execution ledger keeps
 failed navigation outcomes distinct from harness/invocation failures.
 
+`autoplanner/scripts/validation_reporting.py` expands tracking manifests to
+one ledger row per backend and retains a placeholder row when an attempted
+case has no readable artifact. `validation_results.csv` reports success,
+collision, safe-stop, goal time, control effort, and per-run compute latency.
+`validation_report.json` aggregates success/collision/safe-stop rates, reached
+goal-time distributions, control effort, and P50/P95/P99 across the raw
+per-control-cycle latency samples in every available trace.
+
+The dynamic C++ trace includes `compute_latency_ms` for every normal control
+decision. `DynamicPipelineMetrics` exposes `goal_time_s`, `control_effort`,
+`safe_stop_steps`, `compute_latency_samples`, and compute latency P50/P95/P99;
+stop/recovery rows without a control decision are excluded from latency
+percentiles.
+
 ---
 
 ## PlannerResult

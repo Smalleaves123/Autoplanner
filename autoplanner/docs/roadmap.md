@@ -59,7 +59,7 @@ integration surfaces.
 
 - [x] Unify MuJoCo, PyBullet, and kinematic runs under one scenario/result schema.
 - [x] Add noise, latency, actuator saturation, and randomized dynamic-agent suites.
-- [ ] Report success, collision, safe-stop, goal-time, control effort, and
+- [x] Report success, collision, safe-stop, goal-time, control effort, and
   P50/P95/P99 compute latency across all attempted runs.
 - [ ] Preserve and replay minimized failure cases.
 - [ ] Add Linux/macOS CI and distributable Python wheels.

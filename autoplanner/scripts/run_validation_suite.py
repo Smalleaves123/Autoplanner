@@ -11,6 +11,7 @@ import sys
 from typing import Any
 
 from validation_suites import ValidationCase, build_validation_suite
+from validation_reporting import save_report
 
 
 EXECUTION_TYPE = "robotnav.validation.execution"
@@ -188,6 +189,7 @@ def main() -> int:
     results = [execute_case(
         root, build_dir, map_path, output_root, case, args)
         for case in suite.cases]
+    results_csv, report_json, report = save_report(output_root, results)
     execution = {
         "schema_version": 1,
         "artifact_type": EXECUTION_TYPE,
@@ -198,6 +200,8 @@ def main() -> int:
         "completed_cases": sum(bool(result["completed"]) for result in results),
         "successful_outcomes": sum(
             result["outcome_success"] is True for result in results),
+        "results_csv": str(results_csv),
+        "report_json": str(report_json),
     }
     execution_path = output_root / "validation_execution.json"
     with execution_path.open("w", encoding="utf-8") as stream:
@@ -205,6 +209,9 @@ def main() -> int:
         stream.write("\n")
     print(f"Suite: {suite_path}")
     print(f"Execution: {execution_path}")
+    print(
+        f"Report: {report_json} "
+        f"({report['successful_runs']}/{report['attempted_runs']} successful)")
 
     if not args.dry_run and any(not result["completed"] for result in results):
         return 2

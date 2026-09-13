@@ -16,6 +16,7 @@ import math
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +103,17 @@ def perturbation_from_args(args: argparse.Namespace) -> PerturbationSpec:
 
 def wrap_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = quantile * (len(ordered) - 1)
+    lower = math.floor(index)
+    upper = math.ceil(index)
+    fraction = index - lower
+    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
 
 
 def load_obstacle_rectangles(path: Path) -> list[tuple[float, float, float, float]]:
@@ -234,7 +246,7 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
         "ref_v", "command_velocity", "command_steering",
         "applied_velocity", "applied_steering", "cross_track",
         "heading_error", "goal_distance", "reference_index",
-        "obstacle_contacts",
+        "obstacle_contacts", "compute_latency_ms",
     ]
     rows: list[dict[str, float | int]] = []
     actual_path_length = 0.0
@@ -245,8 +257,10 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
     collision_steps = 0
     goal_reached = False
     control_effort = 0.0
+    compute_latencies: list[float] = []
     try:
         for step in range(args.steps):
+            compute_begin = time.perf_counter()
             current = controller_state
             reference_index, reference = nearest_reference(trajectory, current)
             state_object = autompc.State(
@@ -257,6 +271,9 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
             else:
                 command = controller.compute(
                     state_object, trajectory, reference.v)
+            compute_latency_ms = (
+                time.perf_counter() - compute_begin) * 1000.0
+            compute_latencies.append(compute_latency_ms)
             controller_state = simulator.step(
                 command.velocity, command.steering)
             next_state = simulator.last_truth
@@ -296,6 +313,7 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
                 "goal_distance": goal_distance,
                 "reference_index": reference_index,
                 "obstacle_contacts": obstacle_contacts,
+                "compute_latency_ms": compute_latency_ms,
             })
             if (reference_index >= len(trajectory) - 5 and
                     goal_distance <= args.goal_tolerance):
@@ -357,6 +375,11 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
             if rows else 0.0),
         collision_steps=collision_steps,
         control_effort=control_effort,
+        compute_latency_ms={
+            "p50": percentile(compute_latencies, 0.50),
+            "p95": percentile(compute_latencies, 0.95),
+            "p99": percentile(compute_latencies, 0.99),
+        },
     )
     artifact = RunArtifact(
         scenario=scenario,

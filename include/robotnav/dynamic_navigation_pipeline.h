@@ -86,6 +86,7 @@ struct DynamicTraceSample {
     double cross_track_error = 0.0;
     double steering_delta = 0.0;
     double velocity_delta = 0.0;
+    double compute_latency_ms = 0.0;
     bool safe_stop = false;
     NavigationState navigation_state = NavigationState::Initializing;
 };
@@ -117,6 +118,8 @@ struct DynamicPipelineMetrics {
     std::size_t dstar_failure_count = 0;
     std::size_t astar_fallback_count = 0;
     std::size_t collision_steps = 0;
+    std::size_t safe_stop_steps = 0;
+    std::size_t compute_latency_samples = 0;
     std::size_t state_transition_count = 0;
     std::size_t recovery_attempt_count = 0;
     std::size_t yielding_steps = 0;
@@ -127,6 +130,11 @@ struct DynamicPipelineMetrics {
     double local_planner_time_ms = 0.0;
     double max_control_jump = 0.0;
     double mean_control_jump = 0.0;
+    double control_effort = 0.0;
+    double goal_time_s = 0.0;
+    double compute_latency_p50_ms = 0.0;
+    double compute_latency_p95_ms = 0.0;
+    double compute_latency_p99_ms = 0.0;
     double max_trajectory_curvature = 0.0;
     double minimum_turning_radius = 0.0;
     bool kinematic_feasible = false;

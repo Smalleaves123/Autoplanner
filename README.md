@@ -90,6 +90,13 @@ runner failures, so the remaining cases still execute; add `--fail-on-outcome`
 when using the suite as a pass/fail gate. `--dry-run` generates a fully
 inspectable plan without launching a backend.
 
+Every execution also produces `validation_results.csv` and
+`validation_report.json`. The ledger retains incomplete runs and reports each
+case/backend's success, collision, safe-stop, goal time, integrated squared
+control effort, and control-compute P50/P95/P99 latency. The JSON report adds
+aggregate rates and percentiles using raw per-cycle latency samples from all
+available traces.
+
 Dynamic physical replanning uses the same occupancy grid for collision geometry
 and D* Lite updates:
 

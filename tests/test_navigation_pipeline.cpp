@@ -768,6 +768,19 @@ TEST(DynamicNavigationPipelineTest, ReplansAndReachesGoalWithoutCollision) {
     EXPECT_NE(robotnav::toString(result.trace.front().navigation_state), "");
     EXPECT_EQ(result.metrics.steps, result.trace.size());
     EXPECT_FALSE(result.final_path.empty());
+    EXPECT_GT(result.metrics.goal_time_s, 0.0);
+    EXPECT_GT(result.metrics.control_effort, 0.0);
+    EXPECT_EQ(result.metrics.safe_stop_steps, 0u);
+    EXPECT_GT(result.metrics.compute_latency_p50_ms, 0.0);
+    EXPECT_GE(result.metrics.compute_latency_p95_ms,
+              result.metrics.compute_latency_p50_ms);
+    EXPECT_GE(result.metrics.compute_latency_p99_ms,
+              result.metrics.compute_latency_p95_ms);
+    EXPECT_TRUE(std::all_of(
+        result.trace.begin(), result.trace.end(),
+        [](const robotnav::DynamicTraceSample& sample) {
+            return sample.compute_latency_ms >= 0.0;
+        }));
 }
 
 TEST(DynamicNavigationPipelineTest, AcceptsExternalObstacleUpdates) {
