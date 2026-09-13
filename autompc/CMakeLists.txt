@@ -29,6 +29,7 @@ set(AUTOMPC_SOURCES
     src/trajectory/trajectory_tracker.cpp
     src/trajectory/error_metrics.cpp
     src/trajectory/trajectory_generator.cpp
+    src/simulation/differential_drive.cpp
     src/simulation/kinematic_bicycle.cpp
 )
 

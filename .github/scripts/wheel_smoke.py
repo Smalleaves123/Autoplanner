@@ -29,6 +29,14 @@ def main() -> int:
         autompc.State(0.0, 0.0, 0.0, 0.0), options)
     state = simulator.step(autompc.Control(1.0, 0.1))
     assert state.x > 0.0
+
+    differential = autompc.DifferentialDriveSimulator(
+        autompc.State(0.0, 0.0, 0.0, 0.0),
+        autompc.DifferentialDriveOptions())
+    differential_state = differential.step(
+        autompc.DifferentialDriveCommand(1.0, 0.5))
+    assert differential_state.x > 0.0
+    assert differential.right_wheel_velocity > differential.left_wheel_velocity
     assert hasattr(autompc, "MPCController")
     assert robotnav.__version__ == "0.6.0"
 

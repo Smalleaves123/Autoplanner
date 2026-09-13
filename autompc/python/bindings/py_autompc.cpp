@@ -72,6 +72,53 @@ PYBIND11_MODULE(_autompc, m) {
                                &KinematicBicycleSimulator::options,
                                py::return_value_policy::reference_internal);
 
+    py::class_<DifferentialDriveOptions>(m, "DifferentialDriveOptions")
+        .def(py::init<>())
+        .def_readwrite("dt", &DifferentialDriveOptions::dt)
+        .def_readwrite("track_width", &DifferentialDriveOptions::track_width)
+        .def_readwrite("max_linear_velocity",
+                       &DifferentialDriveOptions::max_linear_velocity)
+        .def_readwrite("max_reverse_velocity",
+                       &DifferentialDriveOptions::max_reverse_velocity)
+        .def_readwrite("max_linear_acceleration",
+                       &DifferentialDriveOptions::max_linear_acceleration)
+        .def_readwrite("max_linear_deceleration",
+                       &DifferentialDriveOptions::max_linear_deceleration)
+        .def_readwrite("max_angular_velocity",
+                       &DifferentialDriveOptions::max_angular_velocity)
+        .def_readwrite("max_angular_acceleration",
+                       &DifferentialDriveOptions::max_angular_acceleration)
+        .def_readwrite("max_wheel_velocity",
+                       &DifferentialDriveOptions::max_wheel_velocity)
+        .def_readwrite("allow_reverse", &DifferentialDriveOptions::allow_reverse);
+
+    py::class_<DifferentialDriveCommand>(m, "DifferentialDriveCommand")
+        .def(py::init<>())
+        .def(py::init<double, double>())
+        .def_readwrite("linear_velocity",
+                       &DifferentialDriveCommand::linear_velocity)
+        .def_readwrite("angular_velocity",
+                       &DifferentialDriveCommand::angular_velocity);
+
+    py::class_<DifferentialDriveSimulator>(m, "DifferentialDriveSimulator")
+        .def(py::init<const State&, DifferentialDriveOptions>(),
+             py::arg("initial"),
+             py::arg("options") = DifferentialDriveOptions{})
+        .def("step", &DifferentialDriveSimulator::step)
+        .def("reset", &DifferentialDriveSimulator::reset)
+        .def_property_readonly("state",
+                               &DifferentialDriveSimulator::state,
+                               py::return_value_policy::reference_internal)
+        .def_property_readonly("angular_velocity",
+                               &DifferentialDriveSimulator::angularVelocity)
+        .def_property_readonly("left_wheel_velocity",
+                               &DifferentialDriveSimulator::leftWheelVelocity)
+        .def_property_readonly("right_wheel_velocity",
+                               &DifferentialDriveSimulator::rightWheelVelocity)
+        .def_property_readonly("options",
+                               &DifferentialDriveSimulator::options,
+                               py::return_value_policy::reference_internal);
+
     py::class_<TrajectoryPoint>(m, "TrajectoryPoint")
         .def(py::init<>())
         .def(py::init<double, double, double, double>())

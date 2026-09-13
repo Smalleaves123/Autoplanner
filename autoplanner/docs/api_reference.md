@@ -140,6 +140,21 @@ Both `NavigationPipeline` and `DynamicNavigationPipeline` resolve controllers
 through this registry. Stateful controllers may override `reset()` and
 `onTrajectoryChanged()` lifecycle hooks.
 
+AutoMPC also provides two standalone, actuator-limited execution models. The
+existing `KinematicBicycleSimulator` consumes velocity and steering commands;
+`DifferentialDriveSimulator` consumes linear and angular velocity commands and
+reports the constrained body twist plus left/right wheel velocities. Wheel
+saturation scales both components together so commanded curvature is retained.
+Neither simulator depends on middleware.
+
+```cpp
+autompc::DifferentialDriveOptions options;
+options.track_width = 0.55;
+autompc::DifferentialDriveSimulator simulator(
+    {0.0, 0.0, 0.0, 0.0}, options);
+const auto next = simulator.step({1.0, 0.4});
+```
+
 The buildable `custom_components_example` demonstrates an application-owned
 planner and controller together, including registration, discovery through
 the existing factory helpers, execution, and cleanup:

@@ -18,11 +18,13 @@ computed, and velocity is limited by curvature, acceleration, and braking
 constraints. The generated reference is written as `trajectory.csv` by the
 CLI when tracking a path.
 
-The local execution model is a constrained kinematic bicycle simulator. It
-limits velocity, acceleration, braking, steering angle, and steering rate, and
-keeps steering as actuator state between control updates. This ROS-free
-backend is used by the CLI and dynamic-navigation benchmark; the legacy
-instantaneous `step` function remains available for compatibility.
+The local execution models include constrained kinematic bicycle and
+differential-drive simulators. The bicycle model keeps steering as actuator
+state; the differential-drive model accepts a body twist, limits linear and
+angular acceleration, and enforces wheel-speed saturation while preserving
+curvature. Both are ROS-free. The CLI and dynamic-navigation benchmark keep
+the bicycle model as their compatibility default, and the legacy instantaneous
+`step` function remains available.
 
 ## Controllers
 
@@ -86,7 +88,7 @@ AutoMPC/
 │   ├── core/                   # State, Control, Trajectory, kinematics
 │   ├── controllers/            # PID, Pure Pursuit, Stanley, LQR
 │   ├── trajectory/             # Tracker, error metrics
-│   └── simulation/             # Constrained kinematic bicycle execution
+│   └── simulation/             # Bicycle and differential-drive execution
 ├── src/                        # Implementations
 ├── apps/                       # CLI tool
 ├── examples/                   # Circle tracking demo
@@ -152,6 +154,13 @@ sim_options.max_acceleration = 1.0
 simulator = autompc.KinematicBicycleSimulator(
     autompc.State(0, 0, 0, 0), sim_options)
 state = simulator.step(autompc.Control(1.0, 0.2))
+
+diff_options = autompc.DifferentialDriveOptions()
+diff_options.track_width = 0.55
+diff_drive = autompc.DifferentialDriveSimulator(
+    autompc.State(0, 0, 0, 0), diff_options)
+state = diff_drive.step(
+    autompc.DifferentialDriveCommand(1.0, 0.4))
 ```
 
 The CLI also accepts an AutoPlanner waypoint CSV directly:

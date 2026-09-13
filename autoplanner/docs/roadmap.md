@@ -64,9 +64,20 @@ integration surfaces.
 - [x] Preserve and replay minimized failure cases.
 - [x] Add Linux/macOS CI and distributable Python wheels.
 
+## Phase 6: Multi-kinematic execution
+
+- [x] Add an actuator-limited differential-drive simulator with native and
+  Python APIs.
+- [ ] Add selectable bicycle/differential-drive execution to the high-level
+  RobotNav simulation facade.
+- [ ] Add controller-command adaptation with explicit steering/twist
+  conversion contracts.
+- [ ] Add deterministic cross-model tracking benchmarks and schema fields.
+- [ ] Evaluate a dynamic bicycle model after establishing cross-model
+  baselines.
+
 ## Later research tracks
 
-- Differential-drive and dynamic bicycle execution models.
 - Semantic and multi-resolution costmaps.
 - Multi-modal learned obstacle prediction with classical safety supervision.
 - Residual dynamics learning for MPPI.

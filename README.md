@@ -11,7 +11,7 @@ backends. See the [development roadmap](autoplanner/docs/roadmap.md).
 | Project | Description |
 |---------|-------------|
 | [autoplanner](autoplanner/) | C++ path planning library: A\*, Dijkstra, RRT, RRT\*, JPS, Hybrid A\* and more |
-| [autompc](autompc/) | C++ trajectory tracking: PID, Pure Pursuit, Stanley, LQR |
+| [autompc](autompc/) | C++ trajectory tracking and actuator-limited bicycle/differential-drive simulation |
 
 ## Build
 

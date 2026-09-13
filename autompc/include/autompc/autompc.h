@@ -8,6 +8,7 @@
 #include "autompc/trajectory/trajectory_tracker.h"
 #include "autompc/trajectory/error_metrics.h"
 #include "autompc/trajectory/trajectory_generator.h"
+#include "autompc/simulation/differential_drive.h"
 #include "autompc/simulation/kinematic_bicycle.h"
 
 #ifdef AUTOMPC_HAS_EIGEN
