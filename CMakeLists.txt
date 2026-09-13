@@ -181,6 +181,8 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  autoplanner/tests/test_validation_suites.py)
         robotnav_add_python_test(test_python_validation_reporting
                                  autoplanner/tests/test_validation_reporting.py)
+        robotnav_add_python_test(test_python_failure_replay
+                                 autoplanner/tests/test_failure_replay.py)
         if(BUILD_PYTHON_BINDINGS)
             robotnav_add_python_test(test_python_robotnav_facade
                                      robotnav/tests/test_planning.py)

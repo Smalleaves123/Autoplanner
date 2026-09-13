@@ -97,6 +97,22 @@ control effort, and control-compute P50/P95/P99 latency. The JSON report adds
 aggregate rates and percentiles using raw per-cycle latency samples from all
 available traces.
 
+Failed outcomes are minimized by default. The runner greedily removes
+unnecessary perturbation dimensions or moving agents, verifies that the
+smaller case still fails, and stores a versioned bundle under `failures/` with
+captured map/path inputs and run artifacts. Replay a bundle into a clean output
+directory with:
+
+```bash
+python autoplanner/scripts/replay_failure.py \
+    autoplanner/results/validation_suite/failures/CASE/failure_case.json \
+    --output-dir autoplanner/results/failure_replay
+```
+
+The replay command returns success only when the expected failure is reproduced.
+Use `--no-minimize-failures` on the suite runner when only exact preservation is
+needed and extra minimization executions are undesirable.
+
 Dynamic physical replanning uses the same occupancy grid for collision geometry
 and D* Lite updates:
 

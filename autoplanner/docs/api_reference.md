@@ -312,6 +312,22 @@ decision. `DynamicPipelineMetrics` exposes `goal_time_s`, `control_effort`,
 stop/recovery rows without a control decision are excluded from latency
 percentiles.
 
+### Minimized failure replay
+
+`autoplanner/scripts/failure_replay.py` defines the versioned
+`robotnav.validation.failure` bundle. For tracking failures, minimization
+removes independent position/heading/velocity noise, latency, and saturation
+dimensions while the fixed-seed failure persists. For dynamic failures it
+uses greedy delta debugging to remove agents and then shortens the remaining
+agent lifetimes. Every candidate is executed through the same runner command.
+
+The preserved bundle contains the original and minimized `ValidationCase`,
+the minimization attempt count, the replay command, copied map/path inputs, and
+the complete artifact directory from the verified minimized run.
+`replay_failure.py` redirects the stored command to a fresh output directory
+and returns zero only when the new artifact reproduces the expected failed
+outcome.
+
 ---
 
 ## PlannerResult

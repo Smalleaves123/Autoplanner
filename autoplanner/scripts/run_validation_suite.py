@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import json
 from pathlib import Path
 import subprocess
@@ -12,6 +13,7 @@ from typing import Any
 
 from validation_suites import ValidationCase, build_validation_suite
 from validation_reporting import save_report
+from failure_replay import minimize_failure_case, preserve_failure_bundle
 
 
 EXECUTION_TYPE = "robotnav.validation.execution"
@@ -127,6 +129,60 @@ def execute_case(
     }
 
 
+def preserve_failures(
+        root: Path, build_dir: Path, map_path: Path, output_root: Path,
+        cases: tuple[ValidationCase, ...], results: list[dict[str, Any]],
+        args: argparse.Namespace) -> list[str]:
+    """Minimize failed outcomes and save self-contained replay bundles."""
+
+    if args.dry_run:
+        return []
+    case_by_id = {case.case_id: case for case in cases}
+    bundles = []
+    for result in results:
+        if (not result["attempted"] or not result["completed"] or
+                result["outcome_success"] is not False):
+            continue
+        original = case_by_id[result["case_id"]]
+        minimized = original
+        attempts = 0
+        final_result = result
+        if args.minimize_failures:
+            candidate_index = 0
+
+            def failure_persists(candidate: ValidationCase) -> bool:
+                nonlocal candidate_index
+                candidate_index += 1
+                execution_case = replace(
+                    candidate,
+                    case_id=f"{original.case_id}-candidate-{candidate_index:02d}")
+                candidate_result = execute_case(
+                    root, build_dir, map_path,
+                    output_root / "minimization" / original.case_id,
+                    execution_case, args)
+                return (candidate_result["completed"] and
+                        candidate_result["outcome_success"] is False)
+
+            minimized, attempts = minimize_failure_case(
+                original, failure_persists)
+            if minimized != original:
+                minimized = replace(
+                    minimized, case_id=f"{original.case_id}-minimized")
+                final_result = execute_case(
+                    root, build_dir, map_path,
+                    output_root / "minimized" / original.case_id,
+                    minimized, args)
+                if (not final_result["completed"] or
+                        final_result["outcome_success"] is not False):
+                    minimized = original
+                    final_result = result
+        bundle_path = preserve_failure_bundle(
+            output_root / "failures" / original.case_id,
+            original, minimized, attempts, final_result)
+        bundles.append(str(bundle_path))
+    return bundles
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -163,6 +219,10 @@ def main() -> int:
     parser.add_argument(
         "--fail-on-outcome", action="store_true",
         help="return non-zero when a completed navigation case misses its goal")
+    parser.add_argument(
+        "--minimize-failures", action=argparse.BooleanOptionalAction,
+        default=True,
+        help="delta-debug failed perturbations/agents before preserving them")
     args = parser.parse_args()
     if args.seed < 0 or args.repeats <= 0 or args.agent_count <= 0:
         parser.error("seed must be non-negative; repeats and agent-count positive")
@@ -190,6 +250,8 @@ def main() -> int:
         root, build_dir, map_path, output_root, case, args)
         for case in suite.cases]
     results_csv, report_json, report = save_report(output_root, results)
+    failure_bundles = preserve_failures(
+        root, build_dir, map_path, output_root, suite.cases, results, args)
     execution = {
         "schema_version": 1,
         "artifact_type": EXECUTION_TYPE,
@@ -202,6 +264,7 @@ def main() -> int:
             result["outcome_success"] is True for result in results),
         "results_csv": str(results_csv),
         "report_json": str(report_json),
+        "failure_bundles": failure_bundles,
     }
     execution_path = output_root / "validation_execution.json"
     with execution_path.open("w", encoding="utf-8") as stream:
@@ -212,6 +275,8 @@ def main() -> int:
     print(
         f"Report: {report_json} "
         f"({report['successful_runs']}/{report['attempted_runs']} successful)")
+    if failure_bundles:
+        print(f"Failure bundles: {len(failure_bundles)}")
 
     if not args.dry_run and any(not result["completed"] for result in results):
         return 2
