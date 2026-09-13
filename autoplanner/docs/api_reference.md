@@ -240,6 +240,13 @@ mode probabilities with the combined position covariance. Both predictors
 reject invalid or non-monotonic observations and support non-mutating future
 queries plus explicit reset.
 
+`robotnav/perception/observation_buffer.h` models transport timing explicitly.
+Its event-time watermark reorders delayed frames within a configured window,
+then emits a deterministic timestamp/source/sequence order. Per-source
+sequence tracking reports missing, duplicate, and stale observations;
+post-watermark arrivals are rejected as too late. Arrival delay, out-of-order,
+capacity, and delivery counters remain available for experiment artifacts.
+
 ---
 
 ## PlannerResult

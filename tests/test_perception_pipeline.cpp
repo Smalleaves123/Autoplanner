@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "robotnav/perception/frame_stream.h"
+#include "robotnav/perception/observation_buffer.h"
 #include "robotnav/perception/obstacle_tracker.h"
 #include "robotnav/perception/occupancy_grid.h"
 
@@ -160,4 +161,87 @@ TEST(BufferedFrameStreamTest, AppliesExplicitOverflowPolicy) {
     EXPECT_FALSE(reject_newest.push(second));
     EXPECT_EQ(reject_newest.rejectedCount(), 1u);
     EXPECT_EQ(reject_newest.pop()->sequence, 1u);
+}
+
+TEST(ObservationBufferTest, ReordersFramesByEventTime) {
+    perception::ObservationBufferOptions options;
+    options.reorder_window_ns = 100;
+    options.delayed_threshold_ns = 20;
+    perception::SensorObservationBuffer buffer(options);
+    auto first = scanFrame();
+    auto second = scanFrame();
+    auto third = scanFrame();
+    first.sequence = 1;
+    first.timestamp_ns = 100;
+    second.sequence = 2;
+    second.timestamp_ns = 200;
+    third.sequence = 3;
+    third.timestamp_ns = 300;
+
+    EXPECT_EQ(buffer.push(first, 100),
+              perception::ObservationStatus::Accepted);
+    EXPECT_EQ(buffer.push(third, 350),
+              perception::ObservationStatus::Accepted);
+    ASSERT_TRUE(buffer.popReady());
+    EXPECT_EQ(buffer.push(second, 360),
+              perception::ObservationStatus::Accepted);
+    const auto reordered = buffer.popReady();
+    ASSERT_TRUE(reordered);
+    EXPECT_EQ(reordered->sequence, 2u);
+    EXPECT_EQ(buffer.flushNext()->sequence, 3u);
+    EXPECT_EQ(buffer.metrics().out_of_order_count, 1u);
+    EXPECT_EQ(buffer.metrics().delayed_count, 2u);
+    EXPECT_EQ(buffer.metrics().maximum_delay_ns, 160);
+    EXPECT_EQ(buffer.metrics().missing_sequence_count, 0u);
+}
+
+TEST(ObservationBufferTest, ReportsMissingDuplicateAndLateFrames) {
+    perception::ObservationBufferOptions options;
+    options.reorder_window_ns = 0;
+    perception::SensorObservationBuffer buffer(options);
+    auto first = scanFrame();
+    auto third = scanFrame();
+    first.sequence = 1;
+    first.timestamp_ns = 100;
+    third.sequence = 3;
+    third.timestamp_ns = 300;
+
+    ASSERT_EQ(buffer.push(first, 100),
+              perception::ObservationStatus::Accepted);
+    EXPECT_EQ(buffer.push(first, 100),
+              perception::ObservationStatus::Duplicate);
+    ASSERT_TRUE(buffer.popReady());
+    ASSERT_EQ(buffer.push(third, 300),
+              perception::ObservationStatus::Accepted);
+    ASSERT_TRUE(buffer.popReady());
+    EXPECT_EQ(buffer.metrics().missing_sequence_count, 1u);
+
+    auto late = scanFrame();
+    late.sequence = 4;
+    late.timestamp_ns = 200;
+    EXPECT_EQ(buffer.push(late, 400),
+              perception::ObservationStatus::TooLate);
+    EXPECT_EQ(buffer.metrics().duplicate_count, 1u);
+    EXPECT_EQ(buffer.metrics().too_late_count, 1u);
+}
+
+TEST(ObservationBufferTest, RejectsInvalidArrivalAndCapacityOverflow) {
+    perception::ObservationBufferOptions options;
+    options.reorder_window_ns = 100;
+    options.capacity = 1;
+    perception::SensorObservationBuffer buffer(options);
+    auto first = scanFrame();
+    auto second = scanFrame();
+    first.sequence = 1;
+    first.timestamp_ns = 100;
+    second.sequence = 2;
+    second.timestamp_ns = 200;
+
+    EXPECT_EQ(buffer.push(first, 99),
+              perception::ObservationStatus::InvalidArrivalTimestamp);
+    ASSERT_EQ(buffer.push(first, 100),
+              perception::ObservationStatus::Accepted);
+    EXPECT_EQ(buffer.push(second, 200),
+              perception::ObservationStatus::BufferFull);
+    EXPECT_EQ(buffer.metrics().buffer_full_count, 1u);
 }

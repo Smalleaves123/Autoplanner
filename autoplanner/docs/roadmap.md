@@ -53,7 +53,7 @@ integration surfaces.
   into reusable C++ modules.
 - [x] Keep CSV and JSON replay adapters and add stream/callback adapters.
 - [x] Add Kalman and interacting-multiple-model prediction baselines.
-- [ ] Model delayed, missing, and out-of-order observations explicitly.
+- [x] Model delayed, missing, and out-of-order observations explicitly.
 
 ## Phase 5: Reproducible validation
 
