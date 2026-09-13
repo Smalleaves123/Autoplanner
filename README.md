@@ -413,8 +413,30 @@ cmake --build build-quality --target quality-check
 ```
 
 Every CI run keeps the C++ test result, sanitizer result, and Python package
-smoke result as separate gates. A passing demo is not treated as a substitute
-for these checks.
+smoke result as separate gates on Linux and macOS. A passing demo is not
+treated as a substitute for these checks.
+
+### Binary Python wheels
+
+The wheel workflow builds and tests CPython 3.10–3.13 binary wheels for
+manylinux x86_64 and macOS x86_64 with the full Eigen-backed MPC API. Manual
+workflow runs retain the wheels as GitHub artifacts. A `v*` tag additionally
+publishes them through PyPI trusted publishing after both platform jobs pass.
+
+Build and verify the current platform wheel locally with:
+
+```bash
+python -m pip install --upgrade build
+python -m build --wheel --outdir build/local-wheel
+python -m pip install --force-reinstall build/local-wheel/robotnav-*.whl
+python .github/scripts/wheel_smoke.py \
+    autoplanner/data/maps/simple_50x50.txt
+```
+
+The source distribution explicitly includes all CMake, C++, binding, and
+Python sources required for isolated builds. Publishing requires a protected
+GitHub `pypi` environment configured as a PyPI trusted publisher; no API token
+is stored in the workflow.
 
 ## RobotNav Pipeline
 

@@ -13,8 +13,16 @@ readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "RobotNav contributors"}]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
@@ -47,9 +55,42 @@ wheel.packages = [
     "robotnav/python/robotnav",
 ]
 sdist.include = [
-    "autoplanner/python/**",
-    "autompc/python/**",
-    "robotnav/python/**",
+    "CMakeLists.txt",
+    "README.md",
+    "apps/**/*.cpp",
+    "autompc/CMakeLists.txt",
+    "autompc/apps/**/*.cpp",
+    "autompc/examples/**/*.cpp",
+    "autompc/include/**/*.h",
+    "autompc/python/autompc/*.py",
+    "autompc/python/bindings/CMakeLists.txt",
+    "autompc/python/bindings/*.cpp",
+    "autompc/src/**/*.cpp",
+    "autoplanner/CMakeLists.txt",
+    "autoplanner/apps/**/*.cpp",
+    "autoplanner/benchmark/CMakeLists.txt",
+    "autoplanner/benchmark/*.cpp",
+    "autoplanner/examples/**/*.cpp",
+    "autoplanner/include/**/*.h",
+    "autoplanner/python/autoplanner/*.py",
+    "autoplanner/python/bindings/CMakeLists.txt",
+    "autoplanner/python/bindings/*.cpp",
+    "autoplanner/src/**/*.cpp",
+    "cmake/**/*.cmake",
+    "examples/**/*.cpp",
+    "examples/**/*.py",
+    "include/**/*.h",
+    "robotnav/python/robotnav/*.py",
+    "robotnav/python/bindings/CMakeLists.txt",
+    "robotnav/python/bindings/*.cpp",
+    "src/**/*.cpp",
+]
+sdist.exclude = [
+    "**/.DS_Store",
+    "**/__pycache__",
+    "**/__pycache__/*",
+    "**/*.pyc",
+    "autompc/results/**",
 ]
 
 [tool.scikit-build.cmake]
@@ -58,3 +99,19 @@ build-type = "Release"
 [tool.scikit-build.cmake.define]
 BUILD_TESTS = "OFF"
 BUILD_PYTHON_BINDINGS = "ON"
+
+[tool.cibuildwheel]
+build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*"]
+skip = ["*-musllinux_*"]
+build-verbosity = 1
+test-command = "python {project}/.github/scripts/wheel_smoke.py {project}/autoplanner/data/maps/simple_50x50.txt"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+before-all = "dnf install -y eigen3-devel"
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64"]
+before-all = "brew install eigen"
+environment = { MACOSX_DEPLOYMENT_TARGET = "12.0" }

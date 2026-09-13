@@ -36,7 +36,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Quality.cmake)
 robotnav_configure_quality()
 
 include(GNUInstallDirs)
-install(DIRECTORY include/robotnav DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(NOT DEFINED SKBUILD_PROJECT_NAME)
+    install(DIRECTORY include/robotnav DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -86,10 +88,12 @@ if(ROBOTNAV_ENABLE_OPENMP)
     endif()
 endif()
 
-install(TARGETS robotnav_pipeline
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(NOT DEFINED SKBUILD_PROJECT_NAME)
+    install(TARGETS robotnav_pipeline
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 
 add_executable(dynamic_navigation apps/dynamic_navigation.cpp)
 target_link_libraries(dynamic_navigation PRIVATE autoplanner autompc)
@@ -244,6 +248,8 @@ if(BUILD_PYTHON_BINDINGS)
     # source-tree binding smoke tests.
     file(COPY "${CMAKE_SOURCE_DIR}/robotnav/python/robotnav"
          DESTINATION "${CMAKE_BINARY_DIR}/python")
-    install(DIRECTORY robotnav/python/robotnav
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/python)
+    if(NOT DEFINED SKBUILD_PROJECT_NAME)
+        install(DIRECTORY robotnav/python/robotnav
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}/python)
+    endif()
 endif()

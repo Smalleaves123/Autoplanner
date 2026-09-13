@@ -6,14 +6,22 @@ on:
 
 jobs:
   cpp:
-    name: C++ build and tests
-    runs-on: ubuntu-24.04
+    name: C++ build and tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install C++ dependencies
+      - name: Install C++ dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libeigen3-dev libgtest-dev
+      - name: Install C++ dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja eigen googletest
       - name: Configure
         run: >-
           cmake -S . -B build -G Ninja
@@ -48,53 +56,38 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   python-package:
-    name: Python package smoke test
-    runs-on: ubuntu-24.04
+    name: Python wheel smoke test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Install native build dependencies
+      - name: Install native build dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake g++ libeigen3-dev
+      - name: Install native build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake eigen
       - name: Install build dependencies
-        run: python -m pip install --upgrade pip scikit-build-core pybind11 numpy
-      - name: Build and install wheel
-        run: python -m pip install .
+        run: python -m pip install --upgrade pip build
+      - name: Build wheel
+        run: python -m build --wheel --outdir wheelhouse
+      - name: Install wheel
+        run: python -m pip install wheelhouse/*.whl
       - name: Import and API smoke test
-        run: |
-          python - <<'PY'
-          import autoplanner
-          import autompc
-          import robotnav
-
-          grid = autoplanner.GridMap()
-          assert grid.load_from_txt("autoplanner/data/maps/simple_50x50.txt")
-          result = autoplanner.plan(
-              "astar", grid, autoplanner.Point2i(1, 1),
-              autoplanner.Point2i(48, 48))
-          assert result.success, result.message
-          assert result.path_length > 0.0
-          assert hasattr(autompc, "generate_trajectory")
-          assert robotnav.__version__ == "0.6.0"
-
-          scenario = robotnav.DynamicScenario(
-              "autoplanner/data/maps/simple_50x50.txt",
-              (1, 1), (8, 8),
-              robotnav.DynamicConfig(
-                  frames=1,
-                  steps_per_frame=2,
-                  auto_insert_obstacles=False,
-              ),
-          )
-          result = robotnav.run_dynamic_scenario(scenario)
-          assert result.trace
-          with open("/tmp/robotnav-result.json", "w", encoding="utf-8") as stream:
-              import json
-              json.dump(result.to_dict(), stream)
-          restored = robotnav.DynamicResult.load_json("/tmp/robotnav-result.json")
-          assert restored.status_code == result.status_code
-          print("python package smoke test passed")
-          PY
+        working-directory: ${{ runner.temp }}
+        run: >-
+          python ${{ github.workspace }}/.github/scripts/wheel_smoke.py
+          ${{ github.workspace }}/autoplanner/data/maps/simple_50x50.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robotnav-wheel-smoke-${{ runner.os }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error

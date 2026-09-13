@@ -109,17 +109,19 @@ endif()
 
 include(GNUInstallDirs)
 
-install(TARGETS autompc autompc_cli circle_tracking
-    EXPORT autompcTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(NOT DEFINED SKBUILD_PROJECT_NAME)
+    install(TARGETS autompc autompc_cli circle_tracking
+        EXPORT autompcTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 
-install(DIRECTORY include/autompc
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+    install(DIRECTORY include/autompc
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
 
-install(EXPORT autompcTargets
-    NAMESPACE autompc::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/autompc
-)
+    install(EXPORT autompcTargets
+        NAMESPACE autompc::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/autompc
+    )
+endif()

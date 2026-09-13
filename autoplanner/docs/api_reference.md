@@ -330,6 +330,29 @@ outcome.
 
 ---
 
+## CI and Python wheel distribution
+
+`.github/workflows/ci.yml` runs the C++/CTest suite and an isolated wheel
+build/install/API smoke test on Ubuntu and macOS. Sanitizer testing remains a
+separate Linux gate so platform failures are distinguishable from memory or
+undefined-behavior failures.
+
+`.github/workflows/wheels.yml` uses cibuildwheel to build CPython 3.10–3.13
+manylinux x86_64 and macOS x86_64 wheels. Each repaired wheel is installed and
+executes `.github/scripts/wheel_smoke.py`, which imports all three native
+packages, plans a path, advances the constrained bicycle, checks the Eigen MPC
+surface, and runs the dynamic facade. The source-distribution job also rebuilds
+and tests a wheel using only the generated archive. Manual runs upload
+artifacts; `v*` tags publish through PyPI trusted publishing after every wheel
+job succeeds.
+
+`pyproject.toml` explicitly includes the monorepo's CMake files, C++ sources,
+headers, bindings, and Python packages in the source distribution. Wheel builds
+remain ROS-free and use only header-only Eigen as a build dependency; the
+resulting wheel has no Eigen runtime dependency.
+
+---
+
 ## PlannerResult
 
 ```cpp

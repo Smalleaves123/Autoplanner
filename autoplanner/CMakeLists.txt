@@ -143,20 +143,22 @@ set_target_properties(benchmark_all PROPERTIES
 
 include(GNUInstallDirs)
 
-install(TARGETS autoplanner
-    EXPORT autoplannerTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
+if(NOT DEFINED SKBUILD_PROJECT_NAME)
+    install(TARGETS autoplanner
+        EXPORT autoplannerTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
 
-install(DIRECTORY include/autoplanner
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+    install(DIRECTORY include/autoplanner
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
 
-# Export targets so other projects can use find_package(autoplanner)
-install(EXPORT autoplannerTargets
-    NAMESPACE autoplanner::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/autoplanner
-)
+    # Export targets so other projects can use find_package(autoplanner)
+    install(EXPORT autoplannerTargets
+        NAMESPACE autoplanner::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/autoplanner
+    )
+endif()
 
 # ── Tests ───────────────────────────────────────────────────────────────
 
