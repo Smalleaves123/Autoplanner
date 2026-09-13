@@ -33,13 +33,25 @@ function(robotnav_configure_quality)
     endif()
 
     find_program(ROBOTNAV_CLANG_FORMAT_EXECUTABLE NAMES clang-format)
-    file(GLOB_RECURSE ROBOTNAV_FORMAT_SOURCES CONFIGURE_DEPENDS
-         "${CMAKE_SOURCE_DIR}/*.h"
-         "${CMAKE_SOURCE_DIR}/*.hpp"
-         "${CMAKE_SOURCE_DIR}/*.cpp")
-    list(FILTER ROBOTNAV_FORMAT_SOURCES EXCLUDE REGEX "/build[^/]*/")
-    list(FILTER ROBOTNAV_FORMAT_SOURCES EXCLUDE REGEX "/results/")
-    list(FILTER ROBOTNAV_FORMAT_SOURCES EXCLUDE REGEX "/ros2_ws/")
+    set(ROBOTNAV_FORMAT_ROOTS
+        apps examples include src tests
+        autompc/apps autompc/examples autompc/include autompc/python
+        autompc/src autompc/tests
+        autoplanner/apps autoplanner/benchmark autoplanner/examples
+        autoplanner/include autoplanner/python autoplanner/src
+        autoplanner/tests
+        robotnav/python
+    )
+    set(ROBOTNAV_FORMAT_SOURCES)
+    foreach(ROBOTNAV_FORMAT_ROOT IN LISTS ROBOTNAV_FORMAT_ROOTS)
+        file(GLOB_RECURSE ROBOTNAV_FORMAT_ROOT_SOURCES CONFIGURE_DEPENDS
+             "${CMAKE_SOURCE_DIR}/${ROBOTNAV_FORMAT_ROOT}/*.h"
+             "${CMAKE_SOURCE_DIR}/${ROBOTNAV_FORMAT_ROOT}/*.hpp"
+             "${CMAKE_SOURCE_DIR}/${ROBOTNAV_FORMAT_ROOT}/*.cpp")
+        list(APPEND ROBOTNAV_FORMAT_SOURCES
+             ${ROBOTNAV_FORMAT_ROOT_SOURCES})
+    endforeach()
+    list(REMOVE_DUPLICATES ROBOTNAV_FORMAT_SOURCES)
 
     if(ROBOTNAV_CLANG_FORMAT_EXECUTABLE AND ROBOTNAV_FORMAT_SOURCES)
         add_custom_target(format-check
