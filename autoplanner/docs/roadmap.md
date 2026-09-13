@@ -57,7 +57,7 @@ integration surfaces.
 
 ## Phase 5: Reproducible validation
 
-- [ ] Unify MuJoCo, PyBullet, and kinematic runs under one scenario/result schema.
+- [x] Unify MuJoCo, PyBullet, and kinematic runs under one scenario/result schema.
 - [ ] Add noise, latency, actuator saturation, and randomized dynamic-agent suites.
 - [ ] Report success, collision, safe-stop, goal-time, control effort, and
   P50/P95/P99 compute latency across all attempted runs.

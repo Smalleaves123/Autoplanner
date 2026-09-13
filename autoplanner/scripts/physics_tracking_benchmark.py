@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Closed-loop planner/controller/physics-engine benchmark.
+"""Closed-loop planner/controller/execution-backend benchmark.
 
 The C++ planner produces a waypoint path, the C++ trajectory layer produces a
 curvature-aware reference, and a C++ Stanley or MPC controller is evaluated
-against a MuJoCo or PyBullet execution backend. Raw per-step CSV and summary
-JSON files are written for every run.
+against the C++ kinematic simulator, MuJoCo, or PyBullet. Raw per-step CSV and
+versioned JSON files are written using one backend-neutral schema.
 """
 
 from __future__ import annotations
@@ -25,6 +25,67 @@ from physics_backend_smoke import (  # type: ignore
     PyBulletBicycleSimulator,
     PyBulletRacecarSimulator,
 )
+from experiment_schema import (  # type: ignore
+    BackendSpec,
+    ExperimentManifest,
+    RunArtifact,
+    RunMetrics,
+    ScenarioSpec,
+    SimulationSpec,
+)
+
+
+class KinematicBicycleSimulator:
+    """Adapt the C++ kinematic bicycle to the physics simulator protocol."""
+
+    def __init__(self, options: PhysicsOptions, autompc_module: Any | None = None):
+        if autompc_module is None:
+            import autompc as autompc_module
+        self.autompc = autompc_module
+        native_options = autompc_module.SimulationOptions()
+        for name in (
+                "dt", "wheelbase", "max_velocity", "max_acceleration",
+                "max_deceleration", "max_steering", "max_steering_rate"):
+            setattr(native_options, name, getattr(options, name))
+        self.simulator = autompc_module.KinematicBicycleSimulator(
+            autompc_module.State(0.0, 0.0, 0.0, 0.0), native_options)
+
+    def reset(self, x: float = 0.0, y: float = 0.0,
+              theta: float = 0.0, velocity: float = 0.0) -> None:
+        self.simulator.reset(self.autompc.State(x, y, theta, velocity))
+
+    def observe(self) -> dict[str, float]:
+        state = self.simulator.state
+        return {
+            "x": float(state.x), "y": float(state.y),
+            "theta": float(state.theta), "v": float(state.v),
+            "contacts": 0.0, "obstacle_contacts": 0.0,
+        }
+
+    def step(self, velocity: float, steering: float) -> dict[str, float]:
+        self.simulator.step(self.autompc.Control(velocity, steering))
+        return self.observe()
+
+
+def backend_model(backend_name: str, pybullet_model: str) -> str:
+    if backend_name == "kinematic":
+        return "constrained_bicycle"
+    if backend_name == "mujoco":
+        return "planar"
+    return pybullet_model
+
+
+def create_simulator(backend_name: str, options: PhysicsOptions,
+                     pybullet_model: str, autompc_module: Any) -> Any:
+    """Construct a simulator implementing reset/observe/step/close(optional)."""
+
+    if backend_name == "kinematic":
+        return KinematicBicycleSimulator(options, autompc_module)
+    if backend_name == "mujoco":
+        return MujocoBicycleSimulator(options)
+    if pybullet_model == "racecar":
+        return PyBulletRacecarSimulator(options)
+    return PyBulletBicycleSimulator(options)
 
 
 def wrap_angle(angle: float) -> float:
@@ -102,7 +163,7 @@ def nearest_reference(trajectory: list[Any], state: dict[str, float]) -> tuple[i
 
 
 def run(args: argparse.Namespace, backend_name: str, path: Path,
-        planner_metrics: dict[str, Any], root: Path) -> dict[str, Any]:
+        planner_metrics: dict[str, Any], root: Path) -> RunArtifact:
     import autompc
 
     wheelbase = args.wheelbase
@@ -134,13 +195,8 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
     if backend_name == "pybullet" and args.pybullet_model == "racecar":
         physics_options.obstacle_rectangles = load_obstacle_rectangles(
             (root / args.map).resolve())
-    if backend_name == "mujoco":
-        simulator_class = MujocoBicycleSimulator
-    elif args.pybullet_model == "racecar":
-        simulator_class = PyBulletRacecarSimulator
-    else:
-        simulator_class = PyBulletBicycleSimulator
-    simulator = simulator_class(physics_options)
+    simulator = create_simulator(
+        backend_name, physics_options, args.pybullet_model, autompc)
     initial = trajectory[0]
     simulator.reset(initial.x, initial.y + args.initial_offset,
                     initial.theta, 0.0)
@@ -166,14 +222,15 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
     ]
     rows: list[dict[str, float | int]] = []
     actual_path_length = 0.0
-    previous_state: dict[str, float] | None = None
+    previous_state = simulator.observe()
     max_cross_track = 0.0
     max_heading_error = 0.0
     collision_steps = 0
     goal_reached = False
+    control_effort = 0.0
     try:
         for step in range(args.steps):
-            current = simulator.observe()
+            current = previous_state
             reference_index, reference = nearest_reference(trajectory, current)
             state_object = autompc.State(
                 current["x"], current["y"], current["theta"], current["v"])
@@ -183,11 +240,12 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
             else:
                 command = controller.compute(
                     state_object, trajectory, reference.v)
+            control_effort += args.dt * (
+                float(command.velocity) ** 2 + float(command.steering) ** 2)
             next_state = simulator.step(command.velocity, command.steering)
-            if previous_state is not None:
-                actual_path_length += math.hypot(
-                    next_state["x"] - previous_state["x"],
-                    next_state["y"] - previous_state["y"])
+            actual_path_length += math.hypot(
+                next_state["x"] - previous_state["x"],
+                next_state["y"] - previous_state["y"])
             previous_state = next_state
             cross_track = abs(
                 -math.sin(reference.theta) * (next_state["x"] - reference.x)
@@ -226,39 +284,69 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
         writer.writeheader()
         writer.writerows(rows)
     final = rows[-1] if rows else {}
-    summary = {
-        "backend": backend_name,
-        "physics_model": (
-            args.pybullet_model if backend_name == "pybullet"
-            else "planar_mujoco"),
-        "controller": args.controller,
-        "wheelbase": wheelbase,
-        "path": str(path),
-        "planner": planner_metrics,
-        "steps": len(rows),
-        "goal_reached": goal_reached,
-        "goal_distance": final.get("goal_distance", 0.0),
-        "actual_path_length": actual_path_length,
-        "max_cross_track": max_cross_track,
-        "mean_cross_track": (
+    scenario = ScenarioSpec(
+        scenario_id=args.scenario_id,
+        backend=BackendSpec(
+            backend_name, backend_model(backend_name, args.pybullet_model)),
+        simulation=SimulationSpec(
+            dt=args.dt, wheelbase=wheelbase,
+            max_velocity=args.max_velocity,
+            max_acceleration=args.max_acceleration,
+            max_deceleration=args.max_deceleration,
+            max_steering=args.max_steering,
+            max_steering_rate=args.max_steering_rate),
+        map_path=str((root / args.map).resolve()),
+        path=str(path),
+        start=(float(trajectory[0].x), float(trajectory[0].y)),
+        goal=(float(trajectory[-1].x), float(trajectory[-1].y)),
+        planner=args.planner,
+        controller=args.controller,
+        max_steps=args.steps,
+        goal_tolerance=args.goal_tolerance,
+        initial_offset=args.initial_offset,
+        seed=args.seed,
+        metadata={
+            "sample_spacing": args.sample_spacing,
+            "target_velocity": args.velocity,
+            "max_lateral_acceleration": args.max_lateral_acceleration,
+        },
+    )
+    metrics = RunMetrics(
+        status="goal_reached" if goal_reached else "step_limit",
+        run_success=True,
+        goal_reached=goal_reached,
+        steps=len(rows),
+        goal_time_s=len(rows) * args.dt if goal_reached else None,
+        goal_distance=float(final.get("goal_distance", 0.0)),
+        actual_path_length=actual_path_length,
+        max_cross_track=max_cross_track,
+        mean_cross_track=(
             sum(float(row["cross_track"]) for row in rows) / len(rows)
             if rows else 0.0),
-        "max_heading_error": max_heading_error,
-        "mean_heading_error": (
+        max_heading_error=max_heading_error,
+        mean_heading_error=(
             sum(float(row["heading_error"]) for row in rows) / len(rows)
             if rows else 0.0),
-        "collision_steps": collision_steps,
-        "run_success": True,
-        "csv": str(csv_path),
-    }
-    json_path.write_text(json.dumps(summary, indent=2) + "\n")
-    return summary
+        collision_steps=collision_steps,
+        control_effort=control_effort,
+    )
+    artifact = RunArtifact(
+        scenario=scenario,
+        metrics=metrics,
+        trace_csv=str(csv_path),
+        planner_metrics=planner_metrics,
+    )
+    artifact.save_json(json_path)
+    return artifact
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mujoco", "pybullet", "both"),
-                        default="both")
+    parser.add_argument(
+        "--backend",
+        choices=("kinematic", "mujoco", "pybullet", "both", "all"),
+        default="both",
+        help="execution backend; 'both' retains the MuJoCo+PyBullet alias")
     parser.add_argument("--pybullet-model", choices=("racecar", "planar"),
                         default="racecar")
     parser.add_argument("--controller", choices=("stanley", "mpc"),
@@ -290,17 +378,31 @@ def main() -> int:
     parser.add_argument("--max-lateral-acceleration", type=float, default=1.5)
     parser.add_argument("--initial-offset", type=float, default=0.5)
     parser.add_argument("--goal-tolerance", type=float, default=0.75)
+    parser.add_argument("--scenario-id", default="physics_tracking")
+    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     if args.steps <= 0:
         parser.error("--steps must be positive")
+    if args.seed < 0:
+        parser.error("--seed must be non-negative")
 
     root = Path(__file__).resolve().parents[2]
     path, planner_metrics = planner_path(args, root)
-    backends = ("mujoco", "pybullet") if args.backend == "both" else (args.backend,)
-    summaries = {}
+    if args.backend == "all":
+        backends = ("kinematic", "mujoco", "pybullet")
+    elif args.backend == "both":
+        backends = ("mujoco", "pybullet")
+    else:
+        backends = (args.backend,)
+    artifacts = []
     for backend in backends:
-        summaries[backend] = run(args, backend, path, planner_metrics, root)
-        print(json.dumps(summaries[backend], indent=2))
+        artifact = run(args, backend, path, planner_metrics, root)
+        artifacts.append(artifact)
+        print(json.dumps(artifact.to_dict(), indent=2))
+    output_dir = (root / args.output_dir).resolve()
+    manifest = ExperimentManifest(args.scenario_id, tuple(artifacts))
+    manifest.save_json(output_dir / "experiment_manifest.json")
+    print(f"Manifest: {output_dir / 'experiment_manifest.json'}")
     return 0
 
 

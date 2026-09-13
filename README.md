@@ -47,21 +47,29 @@ and steering command convention in both engines and preserves the raw JSON
 state trace for comparison.
 
 For closed-loop validation, run the planner, C++ trajectory generator, and C++
-controller against the physics backend:
+controller against every execution backend:
 
 ```bash
 python autoplanner/scripts/physics_tracking_benchmark.py \
-    --backend both --controller mpc \
+    --backend all --controller mpc \
     --output-dir autoplanner/results/physics_tracking
 ```
+
+`all` executes the C++ constrained kinematic bicycle, MuJoCo planar model, and
+PyBullet model. Use `--backend kinematic` for the fast dependency-free
+execution backend, or the backward-compatible `both` alias for only MuJoCo and
+PyBullet.
 
 PyBullet uses the bundled four-wheel racecar model by default. The planar
 force model remains available for controlled ablation with
 `--pybullet-model planar`.
 
-This records one CSV and one JSON report per backend. `goal_reached` is kept
-separate from `run_success`, so a physically unstable or incomplete run is
-preserved as evidence rather than being presented as a successful demo.
+This records one CSV trace and one versioned, backend-neutral JSON run artifact
+per backend, plus `experiment_manifest.json` for comparison and replay. Each
+artifact carries the complete route, component selection, simulator model,
+actuator limits, seed, and common metrics. `goal_reached` is kept separate from
+`run_success`, so a physically unstable or incomplete run is preserved as
+evidence rather than being presented as a successful demo.
 
 Dynamic physical replanning uses the same occupancy grid for collision geometry
 and D* Lite updates:

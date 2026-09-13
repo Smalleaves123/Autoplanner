@@ -249,6 +249,35 @@ capacity, and delivery counters remain available for experiment artifacts.
 
 ---
 
+## Execution experiment schema
+
+`autoplanner/scripts/experiment_schema.py` defines the versioned JSON contract
+shared by the C++ kinematic bicycle, MuJoCo, and PyBullet validation backends.
+It uses only the Python standard library, so stored scenarios and results can
+be inspected without any simulator installed.
+
+- `BackendSpec` identifies `kinematic/constrained_bicycle`, `mujoco/planar`,
+  or `pybullet/planar|racecar`.
+- `SimulationSpec` stores the common time step, wheelbase, and actuator limits.
+- `ScenarioSpec` stores the route, component selection, run bounds, seed, and
+  metadata.
+- `RunMetrics` stores execution status, goal/collision/safe-stop results,
+  tracking error, path length, control effort, and latency percentile slots.
+- `RunArtifact` combines one scenario, its metrics, planner metadata, and CSV
+  trace reference. `ExperimentManifest` groups comparable backend runs.
+
+Every top-level object contains `schema_version` and `artifact_type`. Loaders
+reject unknown versions, non-finite values, invalid backend/model pairs, and
+invalid limits. `artifact_from_legacy_summary()` upgrades the earlier physics
+tracking summary format to a v1 `RunArtifact`. Run artifacts also retain the
+old flat summary keys as compatibility aliases for existing analysis scripts;
+new consumers should read `scenario`, `metrics`, and `artifacts`.
+
+`physics_tracking_benchmark.py --backend all` writes one run artifact per
+backend and an `experiment_manifest.json` containing the same structures.
+
+---
+
 ## PlannerResult
 
 ```cpp

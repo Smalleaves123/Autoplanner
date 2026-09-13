@@ -175,6 +175,8 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  autoplanner/tests/test_perception_mapping.py)
         robotnav_add_python_test(test_python_local_planner_benchmark
                                  autoplanner/tests/test_local_planner_benchmark.py)
+        robotnav_add_python_test(test_python_experiment_schema
+                                 autoplanner/tests/test_experiment_schema.py)
         if(BUILD_PYTHON_BINDINGS)
             robotnav_add_python_test(test_python_robotnav_facade
                                      robotnav/tests/test_planning.py)
