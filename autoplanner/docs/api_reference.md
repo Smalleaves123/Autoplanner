@@ -276,6 +276,28 @@ new consumers should read `scenario`, `metrics`, and `artifacts`.
 `physics_tracking_benchmark.py --backend all` writes one run artifact per
 backend and an `experiment_manifest.json` containing the same structures.
 
+### Robustness validation suites
+
+`autoplanner/scripts/validation_suites.py` provides versioned, seeded case
+generation for four perturbation families. `PerturbedSimulator` wraps the same
+`reset/observe/step/close` protocol used by every execution backend and adds:
+
+- independent Gaussian position, heading, and velocity observation noise;
+- observation delay measured in control steps;
+- applied velocity and steering command saturation.
+
+Controllers consume the perturbed observation while run metrics continue to
+use simulator truth. Tracking CSV files store both state views and both
+requested/applied commands. `randomized_dynamic_agents()` enumerates straight
+free-space tracks from the selected occupancy map, chooses non-overlapping
+tracks with a local seeded generator, and emits native dynamic-pipeline CLI
+arguments.
+
+`run_validation_suite.py` supports the `baseline`, `noise`, `latency`,
+`saturation`, `dynamic_agents`, and aggregate `robustness` suites. Generated
+case definitions are saved before execution, and the execution ledger keeps
+failed navigation outcomes distinct from harness/invocation failures.
+
 ---
 
 ## PlannerResult

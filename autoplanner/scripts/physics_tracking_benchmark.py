@@ -33,6 +33,7 @@ from experiment_schema import (  # type: ignore
     ScenarioSpec,
     SimulationSpec,
 )
+from validation_suites import PerturbationSpec, PerturbedSimulator  # type: ignore
 
 
 class KinematicBicycleSimulator:
@@ -86,6 +87,17 @@ def create_simulator(backend_name: str, options: PhysicsOptions,
     if pybullet_model == "racecar":
         return PyBulletRacecarSimulator(options)
     return PyBulletBicycleSimulator(options)
+
+
+def perturbation_from_args(args: argparse.Namespace) -> PerturbationSpec:
+    return PerturbationSpec(
+        position_noise_std=args.position_noise_std,
+        heading_noise_std=args.heading_noise_std,
+        velocity_noise_std=args.velocity_noise_std,
+        observation_latency_steps=args.observation_latency_steps,
+        command_velocity_limit=args.command_velocity_limit,
+        command_steering_limit=args.command_steering_limit,
+    )
 
 
 def wrap_angle(angle: float) -> float:
@@ -195,8 +207,10 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
     if backend_name == "pybullet" and args.pybullet_model == "racecar":
         physics_options.obstacle_rectangles = load_obstacle_rectangles(
             (root / args.map).resolve())
-    simulator = create_simulator(
-        backend_name, physics_options, args.pybullet_model, autompc)
+    simulator = PerturbedSimulator(
+        create_simulator(
+            backend_name, physics_options, args.pybullet_model, autompc),
+        perturbation_from_args(args), args.seed)
     initial = trajectory[0]
     simulator.reset(initial.x, initial.y + args.initial_offset,
                     initial.theta, 0.0)
@@ -215,14 +229,17 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
     csv_path = output_dir / f"{backend_name}_{args.controller}.csv"
     json_path = output_dir / f"{backend_name}_{args.controller}.json"
     fields = [
-        "step", "x", "y", "theta", "v", "ref_x", "ref_y", "ref_theta",
-        "ref_v", "command_velocity", "command_steering", "cross_track",
+        "step", "x", "y", "theta", "v", "observed_x", "observed_y",
+        "observed_theta", "observed_v", "ref_x", "ref_y", "ref_theta",
+        "ref_v", "command_velocity", "command_steering",
+        "applied_velocity", "applied_steering", "cross_track",
         "heading_error", "goal_distance", "reference_index",
         "obstacle_contacts",
     ]
     rows: list[dict[str, float | int]] = []
     actual_path_length = 0.0
-    previous_state = simulator.observe()
+    controller_state = simulator.observe()
+    previous_state = simulator.last_truth
     max_cross_track = 0.0
     max_heading_error = 0.0
     collision_steps = 0
@@ -230,7 +247,7 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
     control_effort = 0.0
     try:
         for step in range(args.steps):
-            current = previous_state
+            current = controller_state
             reference_index, reference = nearest_reference(trajectory, current)
             state_object = autompc.State(
                 current["x"], current["y"], current["theta"], current["v"])
@@ -240,9 +257,13 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
             else:
                 command = controller.compute(
                     state_object, trajectory, reference.v)
+            controller_state = simulator.step(
+                command.velocity, command.steering)
+            next_state = simulator.last_truth
+            applied_velocity = simulator.last_applied_velocity
+            applied_steering = simulator.last_applied_steering
             control_effort += args.dt * (
-                float(command.velocity) ** 2 + float(command.steering) ** 2)
-            next_state = simulator.step(command.velocity, command.steering)
+                applied_velocity ** 2 + applied_steering ** 2)
             actual_path_length += math.hypot(
                 next_state["x"] - previous_state["x"],
                 next_state["y"] - previous_state["y"])
@@ -261,10 +282,16 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
             rows.append({
                 "step": step, "x": next_state["x"], "y": next_state["y"],
                 "theta": next_state["theta"], "v": next_state["v"],
+                "observed_x": controller_state["x"],
+                "observed_y": controller_state["y"],
+                "observed_theta": controller_state["theta"],
+                "observed_v": controller_state["v"],
                 "ref_x": reference.x, "ref_y": reference.y,
                 "ref_theta": reference.theta, "ref_v": reference.v,
                 "command_velocity": command.velocity,
                 "command_steering": command.steering,
+                "applied_velocity": applied_velocity,
+                "applied_steering": applied_steering,
                 "cross_track": cross_track, "heading_error": heading_error,
                 "goal_distance": goal_distance,
                 "reference_index": reference_index,
@@ -309,6 +336,7 @@ def run(args: argparse.Namespace, backend_name: str, path: Path,
             "sample_spacing": args.sample_spacing,
             "target_velocity": args.velocity,
             "max_lateral_acceleration": args.max_lateral_acceleration,
+            "perturbation": perturbation_from_args(args).to_dict(),
         },
     )
     metrics = RunMetrics(
@@ -380,11 +408,21 @@ def main() -> int:
     parser.add_argument("--goal-tolerance", type=float, default=0.75)
     parser.add_argument("--scenario-id", default="physics_tracking")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--position-noise-std", type=float, default=0.0)
+    parser.add_argument("--heading-noise-std", type=float, default=0.0)
+    parser.add_argument("--velocity-noise-std", type=float, default=0.0)
+    parser.add_argument("--observation-latency-steps", type=int, default=0)
+    parser.add_argument("--command-velocity-limit", type=float, default=None)
+    parser.add_argument("--command-steering-limit", type=float, default=None)
     args = parser.parse_args()
     if args.steps <= 0:
         parser.error("--steps must be positive")
     if args.seed < 0:
         parser.error("--seed must be non-negative")
+    try:
+        perturbation_from_args(args)
+    except ValueError as error:
+        parser.error(str(error))
 
     root = Path(__file__).resolve().parents[2]
     path, planner_metrics = planner_path(args, root)

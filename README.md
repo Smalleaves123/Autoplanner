@@ -71,6 +71,25 @@ actuator limits, seed, and common metrics. `goal_reached` is kept separate from
 `run_success`, so a physically unstable or incomplete run is preserved as
 evidence rather than being presented as a successful demo.
 
+Deterministic robustness suites exercise observation noise, delayed state
+feedback, command saturation, and map-valid randomized moving agents. The
+default uses the dependency-free kinematic backend; select `all` after
+installing the optional simulation dependencies.
+
+```bash
+python autoplanner/scripts/run_validation_suite.py \
+    --suite robustness --backend kinematic --repeats 3 \
+    --seed 42 --build-dir build \
+    --output-dir autoplanner/results/validation_suite
+```
+
+The runner writes the exact generated cases to `validation_suite.json` before
+execution and records every command, return code, outcome, and artifact path in
+`validation_execution.json`. Navigation failures are results rather than
+runner failures, so the remaining cases still execute; add `--fail-on-outcome`
+when using the suite as a pass/fail gate. `--dry-run` generates a fully
+inspectable plan without launching a backend.
+
 Dynamic physical replanning uses the same occupancy grid for collision geometry
 and D* Lite updates:
 
