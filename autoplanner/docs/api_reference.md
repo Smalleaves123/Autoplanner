@@ -232,6 +232,7 @@ input before producing bytes; readers report the failing line and invoke the
 callback only for complete, validated frames. This lets replay feed a
 `FrameDispatcher` or `BufferedFrameStream` without an intermediate container.
 
+
 ---
 
 ## PlannerResult
