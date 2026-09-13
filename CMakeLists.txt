@@ -55,6 +55,7 @@ add_library(robotnav_pipeline STATIC
     src/navigation_trace.cpp
     src/obstacle_tracker.cpp
     src/occupancy_grid.cpp
+    src/perception_replay.cpp
     src/perception_types.cpp
     src/safety_supervisor.cpp
     src/scenario_config.cpp

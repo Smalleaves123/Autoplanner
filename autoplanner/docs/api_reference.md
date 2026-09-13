@@ -224,6 +224,14 @@ frames. Dispatchers copy their subscriber set before invocation, permitting
 reentrant subscription changes. Buffers make overload behavior explicit with
 either drop-oldest or reject-newest policies and expose both counters.
 
+`robotnav/perception/replay.h` reads and writes sensor-frame and track-frame
+streams in CSV or newline-delimited JSON. Both encodings use the same
+versioned record schema: a replay preamble, one frame header, then the exact
+number of point or track records declared by that header. Writers validate all
+input before producing bytes; readers report the failing line and invoke the
+callback only for complete, validated frames. This lets replay feed a
+`FrameDispatcher` or `BufferedFrameStream` without an intermediate container.
+
 ---
 
 ## PlannerResult

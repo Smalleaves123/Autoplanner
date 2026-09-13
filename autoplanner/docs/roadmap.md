@@ -51,7 +51,7 @@ integration surfaces.
 - [x] Define a versioned C++ `SensorFrame` and timestamped obstacle-track API.
 - [x] Move occupancy integration and tracking kernels from the Python prototype
   into reusable C++ modules.
-- [ ] Keep CSV and JSON replay adapters and add stream/callback adapters.
+- [x] Keep CSV and JSON replay adapters and add stream/callback adapters.
 - [ ] Add Kalman and interacting-multiple-model prediction baselines.
 - [ ] Model delayed, missing, and out-of-order observations explicitly.
 
