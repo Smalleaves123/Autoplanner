@@ -232,6 +232,13 @@ input before producing bytes; readers report the failing line and invoke the
 callback only for complete, validated frames. This lets replay feed a
 `FrameDispatcher` or `BufferedFrameStream` without an intermediate container.
 
+`robotnav/perception/track_prediction.h` provides a dependency-free
+constant-velocity Kalman baseline and a two-mode interacting multiple model
+(IMM) baseline. The IMM mixes smooth and maneuvering model state/covariance
+before prediction, evaluates measurement likelihoods, and reports normalized
+mode probabilities with the combined position covariance. Both predictors
+reject invalid or non-monotonic observations and support non-mutating future
+queries plus explicit reset.
 
 ---
 
