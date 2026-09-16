@@ -68,9 +68,9 @@ integration surfaces.
 
 - [x] Add an actuator-limited differential-drive simulator with native and
   Python APIs.
-- [ ] Add selectable bicycle/differential-drive execution to the high-level
+- [x] Add selectable bicycle/differential-drive execution to the high-level
   RobotNav simulation facade.
-- [ ] Add controller-command adaptation with explicit steering/twist
+- [x] Add controller-command adaptation with explicit steering/twist
   conversion contracts.
 - [ ] Add deterministic cross-model tracking benchmarks and schema fields.
 - [ ] Evaluate a dynamic bicycle model after establishing cross-model

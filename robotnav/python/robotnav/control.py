@@ -216,6 +216,38 @@ class ControlCommand:
     steering: float
 
 
+@dataclass(frozen=True)
+class TwistCommand:
+    """Differential-drive body command with linear and angular velocities."""
+
+    linear_velocity: float
+    angular_velocity: float
+
+
+def steering_to_twist(
+    command: ControlCommand,
+    wheelbase: float,
+) -> TwistCommand:
+    """Convert an equivalent bicycle command to a differential-drive twist.
+
+    The conversion preserves signed path curvature using
+    ``angular_velocity = velocity * tan(steering) / wheelbase``. Actuator
+    limits remain the responsibility of the selected execution backend.
+    """
+
+    if not isinstance(command, ControlCommand):
+        raise TypeError("command must be a ControlCommand")
+    if not math.isfinite(wheelbase) or wheelbase <= 0.0:
+        raise ValueError("wheelbase must be finite and positive")
+    if not math.isfinite(command.velocity) or not math.isfinite(command.steering):
+        raise ValueError("control command must be finite")
+    return TwistCommand(
+        linear_velocity=command.velocity,
+        angular_velocity=(
+            command.velocity * math.tan(command.steering) / wheelbase),
+    )
+
+
 class Controller:
     """Stateful controller facade with one common ``compute`` method."""
 
@@ -296,9 +328,61 @@ class SimulationConfig:
     max_steering_rate: float = 1.5
     allow_reverse: bool = False
     max_reverse_velocity: float = 1.0
+    execution_model: str = "kinematic_bicycle"
+    track_width: float = 0.5
+    max_angular_velocity: float = 3.0
+    max_angular_acceleration: float = 4.0
+    max_wheel_velocity: float = 2.5
+
+    def __post_init__(self) -> None:
+        if self.execution_model not in {
+            "kinematic_bicycle", "differential_drive",
+        }:
+            raise ValueError(
+                f"unknown execution_model: {self.execution_model}")
+        positive = {
+            "dt": self.dt,
+            "wheelbase": self.wheelbase,
+            "track_width": self.track_width,
+        }
+        non_negative = {
+            "max_velocity": self.max_velocity,
+            "max_acceleration": self.max_acceleration,
+            "max_deceleration": self.max_deceleration,
+            "max_steering": self.max_steering,
+            "max_steering_rate": self.max_steering_rate,
+            "max_reverse_velocity": self.max_reverse_velocity,
+            "max_angular_velocity": self.max_angular_velocity,
+            "max_angular_acceleration": self.max_angular_acceleration,
+            "max_wheel_velocity": self.max_wheel_velocity,
+        }
+        for name, value in positive.items():
+            if not math.isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name, value in non_negative.items():
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
 
     def to_native(self, backend: Any | None = None) -> Any:
         backend = backend or _backend()
+        if self.execution_model == "differential_drive":
+            if not hasattr(backend, "DifferentialDriveOptions"):
+                raise BackendUnavailableError(
+                    "the installed autompc binding does not support "
+                    "differential-drive execution")
+            options = backend.DifferentialDriveOptions()
+            options.dt = self.dt
+            options.track_width = self.track_width
+            options.max_linear_velocity = self.max_velocity
+            options.max_reverse_velocity = self.max_reverse_velocity
+            options.max_linear_acceleration = self.max_acceleration
+            options.max_linear_deceleration = self.max_deceleration
+            options.max_angular_velocity = self.max_angular_velocity
+            options.max_angular_acceleration = self.max_angular_acceleration
+            options.max_wheel_velocity = self.max_wheel_velocity
+            options.allow_reverse = self.allow_reverse
+            return options
+
         options = backend.SimulationOptions()
         for name in (
             "dt", "wheelbase", "max_velocity", "max_acceleration",
@@ -322,6 +406,7 @@ class SimulationResult:
     states: tuple[RobotState, ...]
     controls: tuple[ControlCommand, ...]
     metrics: TrackingMetrics
+    execution_model: str = "kinematic_bicycle"
 
 
 def simulate(
@@ -331,7 +416,7 @@ def simulate(
     config: SimulationConfig | None = None,
     max_time: float = 30.0,
 ) -> SimulationResult:
-    """Run a controller against the C++ kinematic bicycle simulator."""
+    """Run a controller against the selected C++ execution model."""
 
     if max_time <= 0.0:
         raise ValueError("max_time must be positive")
@@ -340,16 +425,31 @@ def simulate(
     if trajectory.empty:
         raise ValueError("trajectory must not be empty")
     config = config or SimulationConfig()
+    if not isinstance(config, SimulationConfig):
+        raise TypeError("config must be a SimulationConfig")
     backend = _backend()
-    native_simulator = backend.KinematicBicycleSimulator(
-        initial.to_native(backend), config.to_native(backend))
+    if config.execution_model == "differential_drive":
+        if not hasattr(backend, "DifferentialDriveSimulator"):
+            raise BackendUnavailableError(
+                "the installed autompc binding does not support "
+                "differential-drive execution")
+        native_simulator = backend.DifferentialDriveSimulator(
+            initial.to_native(backend), config.to_native(backend))
+    else:
+        native_simulator = backend.KinematicBicycleSimulator(
+            initial.to_native(backend), config.to_native(backend))
     states: list[RobotState] = []
     controls: list[ControlCommand] = []
     elapsed = 0.0
     while elapsed < max_time:
         state = RobotState.from_native(native_simulator.state)
         command = controller.compute(state, trajectory)
-        native_command = backend.Control(command.velocity, command.steering)
+        if config.execution_model == "differential_drive":
+            twist = steering_to_twist(command, config.wheelbase)
+            native_command = backend.DifferentialDriveCommand(
+                twist.linear_velocity, twist.angular_velocity)
+        else:
+            native_command = backend.Control(command.velocity, command.steering)
         next_native_state = native_simulator.step(native_command)
         states.append(RobotState.from_native(next_native_state))
         controls.append(command)
@@ -366,4 +466,5 @@ def simulate(
         float(errors.max_cross_track), float(errors.mean_cross_track),
         float(errors.max_heading_err), float(errors.mean_heading_err),
     )
-    return SimulationResult(tuple(states), tuple(controls), metrics)
+    return SimulationResult(
+        tuple(states), tuple(controls), metrics, config.execution_model)

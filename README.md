@@ -290,6 +290,29 @@ simulation = robotnav.simulate(
 print(simulation.metrics.max_cross_track)
 ```
 
+Select the differential-drive execution model without changing the planner or
+controller API:
+
+```python
+simulation = robotnav.simulate(
+    robotnav.RobotState(1.0, 1.0),
+    trajectory,
+    controller,
+    config=robotnav.SimulationConfig(
+        execution_model="differential_drive",
+        track_width=0.55,
+        max_wheel_velocity=2.0,
+    ),
+    max_time=5.0,
+)
+```
+
+Controllers continue to emit velocity and equivalent steering angle. For the
+differential-drive backend, `robotnav.steering_to_twist()` preserves signed
+curvature with `angular_velocity = velocity * tan(steering) / wheelbase` before
+the native backend applies twist and wheel limits. The default remains
+`kinematic_bicycle` for backward compatibility.
+
 See `examples/python/quick_plan.py` and `examples/python/track_path.py` for
 complete runnable examples.
 

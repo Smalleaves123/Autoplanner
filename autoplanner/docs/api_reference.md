@@ -155,6 +155,24 @@ autompc::DifferentialDriveSimulator simulator(
 const auto next = simulator.step({1.0, 0.4});
 ```
 
+The high-level Python facade selects the backend through
+`SimulationConfig.execution_model`, which accepts `kinematic_bicycle` or
+`differential_drive`. Existing controllers remain model-independent:
+
+```python
+config = robotnav.SimulationConfig(
+    execution_model="differential_drive",
+    track_width=0.55,
+    max_wheel_velocity=2.0,
+)
+result = robotnav.simulate(initial, trajectory, controller, config=config)
+```
+
+`robotnav.steering_to_twist()` is the public command-adaptation contract. It
+converts the controller's velocity and equivalent steering angle to a signed
+body twist using bicycle curvature; actuator clipping occurs only afterward in
+the selected native simulator.
+
 The buildable `custom_components_example` demonstrates an application-owned
 planner and controller together, including registration, discovery through
 the existing factory helpers, execution, and cleanup:

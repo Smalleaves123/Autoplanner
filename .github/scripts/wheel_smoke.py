@@ -37,6 +37,20 @@ def main() -> int:
         autompc.DifferentialDriveCommand(1.0, 0.5))
     assert differential_state.x > 0.0
     assert differential.right_wheel_velocity > differential.left_wheel_velocity
+
+    facade_trajectory = robotnav.generate_trajectory(
+        [(0.0, 0.0), (3.0, 0.0)])
+    facade_controller = robotnav.Controller(
+        robotnav.ControllerConfig(controller="stanley"))
+    facade_result = robotnav.simulate(
+        robotnav.RobotState(0.0, 0.0),
+        facade_trajectory,
+        facade_controller,
+        robotnav.SimulationConfig(execution_model="differential_drive"),
+        max_time=0.2,
+    )
+    assert facade_result.states
+    assert facade_result.execution_model == "differential_drive"
     assert hasattr(autompc, "MPCController")
     assert robotnav.__version__ == "0.6.0"
 
