@@ -21,7 +21,9 @@ RUN_TYPE = "robotnav.experiment.run"
 MANIFEST_TYPE = "robotnav.experiment.manifest"
 
 _BACKEND_MODELS = {
-    "kinematic": {"constrained_bicycle"},
+    "kinematic": {
+        "constrained_bicycle", "constrained_differential_drive",
+    },
     "mujoco": {"planar"},
     "pybullet": {"planar", "racecar"},
 }
@@ -131,6 +133,10 @@ class SimulationSpec:
     max_deceleration: float = 2.0
     max_steering: float = 0.7
     max_steering_rate: float = 1.5
+    track_width: float = 0.5
+    max_angular_velocity: float = 3.0
+    max_angular_acceleration: float = 4.0
+    max_wheel_velocity: float = 2.5
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dt", _finite("dt", self.dt, positive=True))
@@ -139,6 +145,13 @@ class SimulationSpec:
         for name in (
                 "max_velocity", "max_acceleration", "max_deceleration",
                 "max_steering", "max_steering_rate"):
+            object.__setattr__(self, name, _finite(
+                name, getattr(self, name), non_negative=True))
+        object.__setattr__(self, "track_width", _finite(
+            "track_width", self.track_width, positive=True))
+        for name in (
+                "max_angular_velocity", "max_angular_acceleration",
+                "max_wheel_velocity"):
             object.__setattr__(self, name, _finite(
                 name, getattr(self, name), non_negative=True))
 
@@ -151,13 +164,23 @@ class SimulationSpec:
             "max_deceleration": self.max_deceleration,
             "max_steering": self.max_steering,
             "max_steering_rate": self.max_steering_rate,
+            "track_width": self.track_width,
+            "max_angular_velocity": self.max_angular_velocity,
+            "max_angular_acceleration": self.max_angular_acceleration,
+            "max_wheel_velocity": self.max_wheel_velocity,
         }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "SimulationSpec":
         return cls(**{name: data[name] for name in (
             "dt", "wheelbase", "max_velocity", "max_acceleration",
-            "max_deceleration", "max_steering", "max_steering_rate")})
+            "max_deceleration", "max_steering", "max_steering_rate")},
+                   **{name: data.get(name, default) for name, default in (
+                       ("track_width", 0.5),
+                       ("max_angular_velocity", 3.0),
+                       ("max_angular_acceleration", 4.0),
+                       ("max_wheel_velocity", 2.5),
+                   )})
 
 
 @dataclass(frozen=True)

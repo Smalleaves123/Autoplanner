@@ -57,6 +57,7 @@ class ExperimentSchemaTests(unittest.TestCase):
     def test_all_backend_scenarios_round_trip(self) -> None:
         for backend, model in (
                 ("kinematic", "constrained_bicycle"),
+                ("kinematic", "constrained_differential_drive"),
                 ("mujoco", "planar"),
                 ("pybullet", "racecar")):
             with self.subTest(backend=backend):
@@ -102,11 +103,22 @@ class ExperimentSchemaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SimulationSpec(max_steering=-0.1)
         with self.assertRaises(ValueError):
+            SimulationSpec(track_width=0.0)
+        with self.assertRaises(ValueError):
+            BackendSpec("kinematic", "unsupported_model")
+        with self.assertRaises(ValueError):
             ScenarioSpec(
                 scenario_id="bad", backend=BackendSpec("mujoco", "planar"),
                 simulation=SimulationSpec(), map_path="", path="",
                 start=(0.0, 0.0), goal=(1.0, 1.0), planner="astar",
                 controller="stanley", max_steps=0)
+
+    def test_differential_drive_limits_round_trip(self) -> None:
+        original = SimulationSpec(
+            dt=0.1, track_width=0.55, max_angular_velocity=2.5,
+            max_angular_acceleration=3.0, max_wheel_velocity=2.0)
+        restored = SimulationSpec.from_dict(original.to_dict())
+        self.assertEqual(restored, original)
 
     def test_legacy_physics_summary_conversion(self) -> None:
         converted = artifact_from_legacy_summary({

@@ -72,7 +72,7 @@ integration surfaces.
   RobotNav simulation facade.
 - [x] Add controller-command adaptation with explicit steering/twist
   conversion contracts.
-- [ ] Add deterministic cross-model tracking benchmarks and schema fields.
+- [x] Add deterministic cross-model tracking benchmarks and schema fields.
 - [ ] Evaluate a dynamic bicycle model after establishing cross-model
   baselines.
 

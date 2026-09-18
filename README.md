@@ -313,6 +313,18 @@ curvature with `angular_velocity = velocity * tan(steering) / wheelbase` before
 the native backend applies twist and wheel limits. The default remains
 `kinematic_bicycle` for backward compatibility.
 
+Run the deterministic cross-model benchmark to emit one manifest and one
+trace per execution model:
+
+```bash
+python autoplanner/scripts/cross_model_tracking_benchmark.py \
+    --output-dir autoplanner/results/cross_model_tracking
+```
+
+The generated artifacts use the same versioned experiment schema as the
+physics validation runs, including actuator limits, control-compute latency,
+and comparable state/twist traces.
+
 See `examples/python/quick_plan.py` and `examples/python/track_path.py` for
 complete runnable examples.
 

@@ -173,6 +173,14 @@ converts the controller's velocity and equivalent steering angle to a signed
 body twist using bicycle curvature; actuator clipping occurs only afterward in
 the selected native simulator.
 
+`autoplanner/scripts/cross_model_tracking_benchmark.py` runs the same fixed
+polyline and controller configuration through both models. It writes one
+`ExperimentManifest` containing a constrained-bicycle and a
+constrained-differential-drive `RunArtifact`, with matching state/twist CSV
+traces and the controller latency percentiles used by the validation report.
+Repeated runs produce identical state traces; timing samples remain
+observational metrics.
+
 The buildable `custom_components_example` demonstrates an application-owned
 planner and controller together, including registration, discovery through
 the existing factory helpers, execution, and cleanup:
