@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import time
 from typing import Any, Iterable, Sequence
 
 from .planning import BackendUnavailableError, PlanResult
@@ -407,6 +408,7 @@ class SimulationResult:
     controls: tuple[ControlCommand, ...]
     metrics: TrackingMetrics
     execution_model: str = "kinematic_bicycle"
+    compute_latency_ms: tuple[float, ...] = ()
 
 
 def simulate(
@@ -440,10 +442,14 @@ def simulate(
             initial.to_native(backend), config.to_native(backend))
     states: list[RobotState] = []
     controls: list[ControlCommand] = []
+    compute_latencies: list[float] = []
     elapsed = 0.0
     while elapsed < max_time:
         state = RobotState.from_native(native_simulator.state)
+        compute_begin = time.perf_counter()
         command = controller.compute(state, trajectory)
+        compute_latencies.append(
+            (time.perf_counter() - compute_begin) * 1000.0)
         if config.execution_model == "differential_drive":
             twist = steering_to_twist(command, config.wheelbase)
             native_command = backend.DifferentialDriveCommand(
@@ -467,4 +473,5 @@ def simulate(
         float(errors.max_heading_err), float(errors.mean_heading_err),
     )
     return SimulationResult(
-        tuple(states), tuple(controls), metrics, config.execution_model)
+        tuple(states), tuple(controls), metrics, config.execution_model,
+        tuple(compute_latencies))
