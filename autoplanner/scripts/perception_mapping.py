@@ -76,6 +76,8 @@ class SensorFrame:
     sensor_y: float
     points: tuple[SensorPoint, ...]
     sensor_theta: float = 0.0
+    timestamp_ns: int | None = None
+    arrival_timestamp_ns: int | None = None
 
 
 @dataclass(frozen=True)
@@ -827,7 +829,7 @@ def load_sensor_frames(path: Path) -> dict[int, SensorFrame]:
     """Load the documented CSV or JSON sensor interchange format."""
     if path.suffix.lower() == ".csv":
         grouped: dict[int, list[SensorPoint]] = {}
-        origins: dict[int, tuple[float, float, float]] = {}
+        origins: dict[int, tuple[float, float, float, int | None, int | None]] = {}
         with path.open(newline="") as stream:
             for row in csv.DictReader(stream):
                 frame = int(row["frame"])
@@ -838,15 +840,65 @@ def load_sensor_frames(path: Path) -> dict[int, SensorFrame]:
                     float(row.get("sensor_x", 0.0)),
                     float(row.get("sensor_y", 0.0)),
                     float(row.get("sensor_theta", 0.0)),
+                    int(row["timestamp_ns"]) if row.get("timestamp_ns") else None,
+                    int(row["arrival_timestamp_ns"])
+                    if row.get("arrival_timestamp_ns") else None,
                 )
         result: dict[int, SensorFrame] = {}
         for frame, points in sorted(grouped.items()):
-            sensor_x, sensor_y, sensor_theta = origins.get(
-                frame, (0.0, 0.0, 0.0))
+            sensor_x, sensor_y, sensor_theta, timestamp_ns, arrival_ns = origins.get(
+                frame, (0.0, 0.0, 0.0, None, None))
             result[frame] = SensorFrame(
-                frame, sensor_x, sensor_y, tuple(points), sensor_theta)
+                frame, sensor_x, sensor_y, tuple(points), sensor_theta,
+                timestamp_ns, arrival_ns)
         return result
     data = json.loads(path.read_text())
+    # ``simulate_sensor_stream.py`` writes a packet-oriented artifact.  Keep
+    # only LiDAR packets here; odometry/IMU/depth packets remain available in
+    # the source JSON and do not describe occupancy rays.
+    if isinstance(data, dict) and "packets" in data:
+        result: dict[int, SensorFrame] = {}
+        for item in data["packets"]:
+            if item.get("type") != "lidar2d":
+                continue
+            pose = item.get("pose", {})
+            angles = item.get("angles", [])
+            ranges = item.get("ranges", [])
+            hits = item.get("hits", [])
+            kinds = item.get("kinds", [])
+            if not (len(angles) == len(ranges) == len(hits)):
+                raise ValueError("LiDAR packet arrays must have equal lengths")
+            if len(kinds) != len(angles):
+                kinds = ["static" if bool(hit) else "unknown" for hit in hits]
+            points = tuple(
+                SensorPoint(
+                    float(pose.get("x", 0.0)) + float(distance) * math.cos(
+                        float(pose.get("theta", 0.0)) + float(angle)),
+                    float(pose.get("y", 0.0)) + float(distance) * math.sin(
+                        float(pose.get("theta", 0.0)) + float(angle)),
+                    _parse_bool(hit),
+                    str(kind),
+                )
+                for angle, distance, hit, kind in zip(
+                    angles, ranges, hits, kinds)
+            )
+            frame = int(item.get("sequence", item.get("world_step", len(result))))
+            # A sensor id is part of the packet identity.  For the common
+            # single-LiDAR case sequence is the natural replay frame.  If a
+            # stream has multiple LiDARs, avoid silently overwriting frames.
+            while frame in result:
+                frame += 1
+            result[frame] = SensorFrame(
+                frame,
+                float(pose.get("x", 0.0)),
+                float(pose.get("y", 0.0)),
+                points,
+                float(pose.get("theta", 0.0)),
+                int(item["timestamp_ns"]) if "timestamp_ns" in item else None,
+                int(item["arrival_timestamp_ns"])
+                if "arrival_timestamp_ns" in item else None,
+            )
+        return result
     frames = data.get("frames", data) if isinstance(data, dict) else data
     if not isinstance(frames, list):
         raise ValueError("sensor JSON must be a list or contain a frames list")
@@ -860,7 +912,10 @@ def load_sensor_frames(path: Path) -> dict[int, SensorFrame]:
         result[frame] = SensorFrame(
             frame, float(item.get("sensor_x", 0.0)),
             float(item.get("sensor_y", 0.0)), points,
-            float(item.get("sensor_theta", 0.0)))
+            float(item.get("sensor_theta", 0.0)),
+            int(item["timestamp_ns"]) if "timestamp_ns" in item else None,
+            int(item["arrival_timestamp_ns"])
+            if "arrival_timestamp_ns" in item else None)
     return result
 
 
@@ -868,7 +923,8 @@ def save_sensor_csv(path: Path, frames: Iterable[SensorFrame]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as stream:
         fields = ("frame", "sensor_x", "sensor_y", "sensor_theta",
-                  "point_x", "point_y", "hit", "kind")
+                  "timestamp_ns", "arrival_timestamp_ns", "point_x",
+                  "point_y", "hit", "kind")
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         for frame in frames:
@@ -876,6 +932,11 @@ def save_sensor_csv(path: Path, frames: Iterable[SensorFrame]) -> None:
                 writer.writerow({
                     "frame": frame.frame, "sensor_x": frame.sensor_x,
                     "sensor_y": frame.sensor_y, "sensor_theta": frame.sensor_theta,
+                    "timestamp_ns": (frame.timestamp_ns
+                                      if frame.timestamp_ns is not None else ""),
+                    "arrival_timestamp_ns": (frame.arrival_timestamp_ns
+                                              if frame.arrival_timestamp_ns is not None
+                                              else ""),
                     "point_x": point.x, "point_y": point.y,
                     "hit": int(point.hit), "kind": point.kind,
                 })
@@ -888,6 +949,8 @@ def save_sensor_json(path: Path, frames: Iterable[SensorFrame]) -> None:
         "sensor_x": frame.sensor_x,
         "sensor_y": frame.sensor_y,
         "sensor_theta": frame.sensor_theta,
+        "timestamp_ns": frame.timestamp_ns,
+        "arrival_timestamp_ns": frame.arrival_timestamp_ns,
         "points": [asdict(point) for point in frame.points],
     } for frame in frames]}
     path.parent.mkdir(parents=True, exist_ok=True)

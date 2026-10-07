@@ -22,6 +22,7 @@ function(add_robotnav_test name source)
 endfunction()
 
 add_robotnav_test(test_navigation_pipeline test_navigation_pipeline.cpp)
+add_robotnav_test(test_cooperative_astar test_cooperative_astar.cpp)
 add_robotnav_test(test_trajectory_controller test_trajectory_controller.cpp)
 add_robotnav_test(test_local_planner_registry test_local_planner_registry.cpp)
 add_robotnav_test(test_component_catalog test_component_catalog.cpp)

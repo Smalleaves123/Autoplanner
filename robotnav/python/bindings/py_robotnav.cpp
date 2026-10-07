@@ -8,6 +8,7 @@
 #include <pybind11/stl.h>
 
 #include "autoplanner/core/grid_map.h"
+#include "robotnav/cooperative_astar.h"
 #include "robotnav/dynamic_navigation_pipeline.h"
 
 namespace py = pybind11;
@@ -220,6 +221,55 @@ py::dict runDynamic(
     return output;
 }
 
+py::dict planCooperative(
+    const std::string& map_path,
+    const std::vector<std::pair<int, int>>& starts,
+    const std::vector<std::pair<int, int>>& goals,
+    bool allow_diagonal,
+    bool allow_wait,
+    std::size_t max_time_steps,
+    const std::string& algorithm,
+    bool allow_shared_goals,
+    const std::vector<std::size_t>& priority_order,
+    std::size_t max_cbs_nodes) {
+    autoplanner::GridMap map;
+    if (!map.loadFromTxt(map_path)) {
+        throw std::runtime_error("failed to load occupancy map: " + map_path);
+    }
+    std::vector<autoplanner::Point2i> start_points;
+    std::vector<autoplanner::Point2i> goal_points;
+    for (const auto& point : starts) start_points.emplace_back(point.first, point.second);
+    for (const auto& point : goals) goal_points.emplace_back(point.first, point.second);
+    if (algorithm != "prioritized" && algorithm != "cbs") {
+        throw std::invalid_argument(
+            "algorithm must be 'prioritized' or 'cbs'");
+    }
+    robotnav::CooperativeAStarPlanner planner({
+        allow_diagonal, allow_wait, max_time_steps, algorithm == "cbs",
+        allow_shared_goals, priority_order, max_cbs_nodes});
+    const auto result = planner.plan(map, start_points, goal_points);
+    py::dict output;
+    output["success"] = result.success;
+    output["message"] = result.message;
+    output["planned_agents"] = result.planned_agents;
+    output["vertex_conflicts"] = result.vertex_conflicts;
+    output["edge_conflicts"] = result.edge_conflicts;
+    py::list plans;
+    for (const auto& plan : result.plans) {
+        py::dict item;
+        item["success"] = plan.success;
+        item["message"] = plan.message;
+        item["planner_name"] = plan.planner_name;
+        item["path_length"] = plan.path_length;
+        py::list path;
+        for (const auto& point : plan.path) path.append(py::make_tuple(point.x, point.y));
+        item["path"] = path;
+        plans.append(item);
+    }
+    output["plans"] = plans;
+    return output;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_robotnav, module) {
@@ -268,4 +318,13 @@ PYBIND11_MODULE(_robotnav, module) {
                py::arg("max_replanning_retries") = 1,
                py::arg("replanning_cooldown_frames") = 0,
                py::arg("recovery_stop_steps") = 10);
+    module.def("plan_cooperative", &planCooperative,
+               py::arg("map_path"), py::arg("starts"), py::arg("goals"),
+               py::arg("allow_diagonal") = true,
+               py::arg("allow_wait") = true,
+               py::arg("max_time_steps") = 200,
+               py::arg("algorithm") = "prioritized",
+               py::arg("allow_shared_goals") = false,
+               py::arg("priority_order") = std::vector<std::size_t>{},
+               py::arg("max_cbs_nodes") = 10000);
 }

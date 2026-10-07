@@ -120,6 +120,51 @@ class ExperimentSchemaTests(unittest.TestCase):
         restored = SimulationSpec.from_dict(original.to_dict())
         self.assertEqual(restored, original)
 
+    def test_sensor_configuration_and_artifact_refs_round_trip(self) -> None:
+        original = ScenarioSpec(
+            scenario_id="sensor-smoke",
+            backend=BackendSpec("kinematic", "constrained_bicycle"),
+            simulation=SimulationSpec(dt=0.1),
+            map_path="map.txt", path="sensor_trace.csv",
+            start=(1.0, 1.0), goal=(5.0, 5.0),
+            planner="dstar_lite", controller="feedback",
+            max_steps=20, seed=11,
+            sensors={
+                "stream": "sensor_stream.json",
+                "lidar": {"beams": 91, "max_range": 15.0},
+                "timing": {"latency_steps": 1, "drop_probability": 0.1},
+            },
+        )
+        artifact = RunArtifact(
+            scenario=original,
+            metrics=RunMetrics(
+                status="step_limit", run_success=True, goal_reached=False,
+                steps=20, goal_time_s=None, goal_distance=2.0,
+                actual_path_length=4.0,
+            ),
+            trace_csv="trace.csv",
+            artifact_refs={
+                "sensor_stream": "sensor_stream.json",
+                "replay_manifest": "replay_manifest.json",
+            },
+        )
+        restored = RunArtifact.from_dict(artifact.to_dict())
+        self.assertEqual(restored, artifact)
+        self.assertEqual(restored.scenario.sensors["timing"]["latency_steps"], 1)
+
+    def test_artifact_refs_cannot_override_trace(self) -> None:
+        with self.assertRaises(ValueError):
+            RunArtifact(
+                scenario=scenario("kinematic", "constrained_bicycle"),
+                metrics=RunMetrics(
+                    status="step_limit", run_success=True, goal_reached=False,
+                    steps=0, goal_time_s=None, goal_distance=1.0,
+                    actual_path_length=0.0,
+                ),
+                trace_csv="trace.csv",
+                artifact_refs={"trace_csv": "other.csv"},
+            )
+
     def test_legacy_physics_summary_conversion(self) -> None:
         converted = artifact_from_legacy_summary({
             "backend": "mujoco", "physics_model": "planar_mujoco",

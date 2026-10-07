@@ -49,6 +49,7 @@ add_subdirectory(autompc)
 
 add_library(robotnav_pipeline STATIC
     src/component_catalog.cpp
+    src/cooperative_astar.cpp
     src/dwa_local_planner.cpp
     src/dynamic_navigation_pipeline.cpp
     src/local_planner_registry.cpp
@@ -206,6 +207,24 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  ENVIRONMENT
                                  "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
                                  TIMEOUT 120)
+            robotnav_add_python_test(test_python_robotnav_multi_agent
+                                     robotnav/tests/test_multi_agent.py)
+            set_tests_properties(test_python_robotnav_multi_agent PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 60)
+            robotnav_add_python_test(test_python_robotnav_estimation
+                                     robotnav/tests/test_estimation.py)
+            set_tests_properties(test_python_robotnav_estimation PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 60)
+            robotnav_add_python_test(test_python_robotnav_localization
+                                     robotnav/tests/test_localization.py)
+            set_tests_properties(test_python_robotnav_localization PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 60)
         endif()
         robotnav_add_python_test(
             test_python_perception_replay

@@ -229,6 +229,127 @@ if (!validation.valid) {
 
 ---
 
+## Planar Python state estimation
+
+`robotnav.PlanarEkf(initial, EkfConfig(), timestamp_ns=0)` maintains the state
+`[x, y, heading, forward velocity, yaw rate]` and a 5-by-5 covariance using only
+the Python standard library. It accepts `OdometryMeasurement` (velocity and
+`delta_theta / sample_dt`) and `ImuMeasurement` (yaw rate measurement and
+acceleration prediction input) and optional `PoseMeasurement` (map-frame x/y/
+heading), but never integrates truth-frame odometry
+position deltas or reads `LidarScan.pose`.
+
+- `update(packet)` returns whether the observation was accepted; invalid
+  geometry raises, while duplicate, wrong-entity, and expired packets are
+  counted in `rejected_packets`.
+- `estimate` exposes the latest event-time `StateEstimate`.
+- `estimate_at(timestamp_ns)` queries retained historical poses or predicts
+  forward without changing filter state; queries before retained history raise.
+- `reset(initial, timestamp_ns=0)` clears observations and counters.
+
+Delayed observations are replayed in deterministic event order within
+`history_seconds` and `max_history_packets` bounds. Process standard deviations
+define diagonal covariance growth per square root of second; measurement
+standard deviations are in velocity/yaw-rate units. Prediction acceleration
+white-noise uncertainty is approximated by velocity process noise; IMU bias
+states can be enabled separately as described below.
+The initial pose hint is assumed known. Without pose measurements, no absolute
+drift correction is made. Pose measurements are replayed after motion events
+at equal timestamps, use wrapped heading innovations, and expose separate
+`accepted_pose_packets` / `accepted_motion_packets` counters.
+Consumers must impose their own extrapolation-age limits.
+
+`EkfConfig(estimate_gyro_bias=True)` augments the state with gyro bias at index
+5 and uses a 6-by-6 covariance. The IMU observation is `yaw_rate + gyro_bias`;
+odometry observes yaw rate alone. `initial_gyro_bias` (signed rad/s),
+`initial_gyro_bias_std` (positive rad/s), and `gyro_bias_process_std`
+(non-negative rad/s/sqrt(s), zero for constant bias) configure the prior and
+random walk. `StateEstimate.gyro_bias` and `gyro_bias_std` expose estimate and
+uncertainty. Five-state mode remains the library default, reports bias zero and
+std `None`; the navigation demo defaults to six-state mode. Reset restores the
+configured bias prior, and fixed-lag replay/pose corrections retain bias cross
+covariances. IMU alone cannot separately observe rate and bias; an unbiased
+odometry or pose reference is required. Common odometry/IMU systematic errors
+remain unresolved.
+
+`ImuConfig.angular_velocity_bias` adds a signed constant gyro offset.
+`angular_velocity_bias_random_walk_std` controls seeded Brownian increments
+with std `sigma * sqrt(physical_dt)`, independent of timestamp jitter and
+delivery drops/latency. The initial sample uses the configured offset; subsequent
+sensor steps evolve it even if dropped. Measurement packets retain their schema;
+`SensorSuite.imu_biases` exposes simulator-only truth for evaluation. Bias RNGs
+are independent of measurement/drop RNGs, and `reset()` resets both. Gyro truth
+rate is the wrapped heading difference over the successful sample interval,
+with bias evaluated at the current capture time. This is a planar simplified
+IMU, not a 3-D inertial sensor.
+
+`ImuConfig.acceleration_bias` adds a signed forward-acceleration offset
+(map units/s²); `acceleration_bias_random_walk_std` adds an independent seeded
+random walk (map units/s²/sqrt(s)) with the same physical-time, drop, jitter,
+and reset guarantees. `SensorSuite.imu_acceleration_biases` provides evaluation
+truth only. Neither bias is placed in measurement packets. Acceleration truth
+is the change in forward speed over the successful sample interval, not a
+gravity-inclusive body-frame specific force.
+
+`EkfConfig(estimate_acceleration_bias=True)` adds a forward-acceleration bias
+state. Prediction holds the most recent raw IMU acceleration and subtracts
+the current estimated bias, with analytic bias derivatives in the position
+and velocity Jacobian. Before the first IMU observation prediction assumes
+zero acceleration, regardless of the bias prior. Unbiased odometry velocity
+or sufficiently informative map-position observations can estimate this bias
+through cross covariance; IMU alone cannot observe it.
+`initial_acceleration_bias`, `initial_acceleration_bias_std` (positive), and
+`acceleration_bias_process_std` (non-negative, per sqrt(s)) configure its prior
+and diffusion. `StateEstimate.acceleration_bias` / `acceleration_bias_std` are
+`None` when disabled. Gyro bias remains zero/std `None` when disabled.
+
+The five core state components stay in their original order; enabled bias
+states are appended in gyro-then-acceleration order:
+
+| Gyro bias | Acceleration bias | Covariance | Bias indices |
+| --- | --- | --- | --- |
+| off | off | 5×5 | none |
+| on | off | 6×6 | gyro: 5 |
+| off | on | 6×6 | acceleration: 5 |
+| on | on | 7×7 | gyro: 5, acceleration: 6 |
+
+Reset restores both configured priors; delayed-event replay and pose correction
+retain both biases and their cross covariances. All bias estimation is optional
+in the library. Navigation retains gyro-on/acceleration-off defaults, with
+independent `--[no-]estimate-gyro-bias` / `--[no-]estimate-acceleration-bias`
+switches. No gravity, roll/pitch, 3-D accelerometer calibration, or shared
+reference-error estimation is implied.
+
+`scan.to_perception_frame(pose=estimated_capture_pose)` transforms local LiDAR
+angles/ranges with the supplied estimate, preserving event/arrival timestamps
+and return semantics. Without `pose=`, it retains the previous truth-based
+projection behavior for backwards-compatible replay.
+
+### Known-map scan matching
+
+`robotnav.GridScanMatcher(map, ScanMatcherConfig()).match(scan, hint)` registers
+local beam angles/ranges to exposed 0/1 grid-cell boundaries. It never reads
+`scan.pose`. Bounded multilevel search is followed by robust point-to-line ICP;
+free-space ray visibility and surface normals prevent correspondence to a
+wall's back face or a surface occluded by another wall. Dynamic-labeled beams
+and no-hit beams are ignored; unknown-labeled hits can be matched.
+
+`ScanMatchResult` reports the proposed `pose`, `accepted`, `reason`, initial/
+final RMSE, inlier/point counts, and a normalized normal-matrix determinant
+(`information_ratio`) used to reject degenerate geometry. Missing support,
+poor fit, and geometrically ambiguous fits are not fed to the EKF. This is a
+local baseline: bounded search cannot resolve globally repeated structures
+or recover an arbitrarily wrong initial pose.
+
+Accepted results can be sent as `PoseMeasurement` with the original LiDAR
+sequence and capture/arrival timestamps. Its `position_std` / `heading_std`
+are conservative independent uncertainty assumptions, not calibrated full
+ICP covariance. The runner defaults to matching every five generated scans,
+records quality diagnostics, and can disable matching with
+`--localization dead_reckoning`. Online matches are not re-registered when a
+later motion observation revises their original hint; accepted pose events
+are replayed as fixed measurements within EKF history.
+
 ## Middleware-independent perception types
 
 `robotnav/perception/types.h` defines the stable C++ boundary between sensor

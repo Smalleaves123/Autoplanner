@@ -37,44 +37,9 @@ autompc::TrajectoryPoint closestReference(
     return best;
 }
 
-autompc::State rolloutStep(const autompc::State& state,
-                           double& steering,
-                           const autompc::Control& command,
-                           const autompc::SimulationOptions& options,
-                           double dt) {
-    const double minimum_velocity = options.allow_reverse
-        ? -options.max_reverse_velocity : 0.0;
-    const double target_velocity = clampFinite(
-        command.velocity, minimum_velocity, options.max_velocity);
-    const double velocity_delta = target_velocity - state.v;
-    const double acceleration_limit = velocity_delta >= 0.0
-        ? options.max_acceleration
-        : options.max_deceleration;
-    const double max_velocity_delta = std::max(0.0, acceleration_limit) * dt;
-    const double next_velocity = state.v + std::clamp(
-        velocity_delta, -max_velocity_delta, max_velocity_delta);
-
-    const double target_steering = clampFinite(
-        command.steering, -options.max_steering, options.max_steering);
-    const double steering_delta = target_steering - steering;
-    const double max_steering_delta =
-        std::max(0.0, options.max_steering_rate) * dt;
-    const double next_steering = steering + std::clamp(
-        steering_delta, -max_steering_delta, max_steering_delta);
-
-    const double velocity_midpoint = 0.5 * (state.v + next_velocity);
-    const double steering_midpoint = 0.5 * (steering + next_steering);
-    autompc::State next = state;
-    next.x += velocity_midpoint * std::cos(state.theta) * dt;
-    next.y += velocity_midpoint * std::sin(state.theta) * dt;
-    if (options.wheelbase > 0.0) {
-        next.theta += velocity_midpoint / options.wheelbase *
-                      std::tan(steering_midpoint) * dt;
-    }
-    next.theta = normalizeAngle(next.theta);
-    next.v = next_velocity;
-    steering = next_steering;
-    return next;
+autompc::State rolloutStep(RolloutSimulator& simulator,
+                           const autompc::Control& command) {
+    return simulator.step(command);
 }
 
 bool dynamicSegmentValid(const autompc::State& start,
@@ -291,8 +256,9 @@ MppiDecision MppiLocalPlanner::computeCommand(
 #endif
     for (int rollout = 0; rollout < options_.rollouts; ++rollout) {
         auto& result = rollout_results[static_cast<std::size_t>(rollout)];
+        RolloutSimulator simulator(state, prediction_dt, simulation_options_);
+        simulator.setSteering(current_steering);
         autompc::State predicted = state;
-        double predicted_steering = current_steering;
         autompc::Control previous = nominal;
         bool valid = true;
         double elapsed_seconds = 0.0;
@@ -302,9 +268,7 @@ MppiDecision MppiLocalPlanner::computeCommand(
                 static_cast<std::size_t>(step)];
             if (step == 0) result.first_command = command;
 
-            const auto next = rolloutStep(
-                predicted, predicted_steering, command,
-                simulation_options_, prediction_dt);
+            const auto next = rolloutStep(simulator, command);
             if (!collision_checker_.isPoseSegmentValid(
                     {predicted.x, predicted.y, predicted.theta},
                     {next.x, next.y, next.theta})) {
@@ -444,10 +408,11 @@ MppiDecision MppiLocalPlanner::computeCommand(
     // The weighted mean is not guaranteed to remain inside the non-convex
     // collision-free set. Keep the best sampled first action as a safety
     // fallback if the aggregate itself crosses an obstacle.
-    double aggregated_steering = current_steering;
+    RolloutSimulator aggregate_simulator(
+        state, prediction_dt, simulation_options_);
+    aggregate_simulator.setSteering(current_steering);
     const auto aggregated_next = rolloutStep(
-        state, aggregated_steering, aggregated_command,
-        simulation_options_, prediction_dt);
+        aggregate_simulator, aggregated_command);
     double aggregate_clearance = std::numeric_limits<double>::infinity();
     double aggregate_probability = 0.0;
     const bool aggregate_valid =

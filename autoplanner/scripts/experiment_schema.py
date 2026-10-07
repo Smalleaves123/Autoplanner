@@ -22,7 +22,8 @@ MANIFEST_TYPE = "robotnav.experiment.manifest"
 
 _BACKEND_MODELS = {
     "kinematic": {
-        "constrained_bicycle", "constrained_differential_drive",
+        "constrained_bicycle", "constrained_dynamic_bicycle",
+        "constrained_differential_drive",
     },
     "mujoco": {"planar"},
     "pybullet": {"planar", "racecar"},
@@ -77,6 +78,18 @@ def _mapping(name: str, value: Mapping[str, Any]) -> dict[str, Any]:
         json.dumps(result, allow_nan=False)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{name} must contain JSON-compatible values") from error
+    return result
+
+
+def _string_mapping(name: str, value: Mapping[str, Any]) -> dict[str, str]:
+    """Validate named artifact references without constraining their paths."""
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be an object")
+    result: dict[str, str] = {}
+    for key, item in value.items():
+        if not str(key).strip() or not isinstance(item, str):
+            raise ValueError(f"{name} must map non-empty names to strings")
+        result[str(key)] = item
     return result
 
 
@@ -137,6 +150,12 @@ class SimulationSpec:
     max_angular_velocity: float = 3.0
     max_angular_acceleration: float = 4.0
     max_wheel_velocity: float = 2.5
+    front_axle: float = 0.5
+    rear_axle: float = 0.5
+    mass: float = 20.0
+    yaw_inertia: float = 10.0
+    front_cornering_stiffness: float = 80.0
+    rear_cornering_stiffness: float = 80.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dt", _finite("dt", self.dt, positive=True))
@@ -154,6 +173,13 @@ class SimulationSpec:
                 "max_wheel_velocity"):
             object.__setattr__(self, name, _finite(
                 name, getattr(self, name), non_negative=True))
+        for name in ("front_axle", "rear_axle", "mass", "yaw_inertia"):
+            object.__setattr__(self, name, _finite(
+                name, getattr(self, name), positive=True))
+        for name in ("front_cornering_stiffness",
+                     "rear_cornering_stiffness"):
+            object.__setattr__(self, name, _finite(
+                name, getattr(self, name), non_negative=True))
 
     def to_dict(self) -> dict[str, float]:
         return {
@@ -168,6 +194,12 @@ class SimulationSpec:
             "max_angular_velocity": self.max_angular_velocity,
             "max_angular_acceleration": self.max_angular_acceleration,
             "max_wheel_velocity": self.max_wheel_velocity,
+            "front_axle": self.front_axle,
+            "rear_axle": self.rear_axle,
+            "mass": self.mass,
+            "yaw_inertia": self.yaw_inertia,
+            "front_cornering_stiffness": self.front_cornering_stiffness,
+            "rear_cornering_stiffness": self.rear_cornering_stiffness,
         }
 
     @classmethod
@@ -180,6 +212,10 @@ class SimulationSpec:
                        ("max_angular_velocity", 3.0),
                        ("max_angular_acceleration", 4.0),
                        ("max_wheel_velocity", 2.5),
+                       ("front_axle", 0.5), ("rear_axle", 0.5),
+                       ("mass", 20.0), ("yaw_inertia", 10.0),
+                       ("front_cornering_stiffness", 80.0),
+                       ("rear_cornering_stiffness", 80.0),
                    )})
 
 
@@ -202,6 +238,7 @@ class ScenarioSpec:
     initial_offset: float = 0.0
     seed: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    sensors: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.scenario_id.strip():
@@ -225,6 +262,8 @@ class ScenarioSpec:
             "seed", self.seed, allow_zero=True))
         object.__setattr__(self, "metadata", _mapping(
             "metadata", self.metadata))
+        object.__setattr__(self, "sensors", _mapping(
+            "sensors", self.sensors))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -251,6 +290,7 @@ class ScenarioSpec:
                 "seed": self.seed,
             },
             "metadata": self.metadata,
+            "sensors": self.sensors,
         }
 
     @classmethod
@@ -273,6 +313,7 @@ class ScenarioSpec:
             initial_offset=run.get("initial_offset", 0.0),
             seed=run.get("seed", 0),
             metadata=dict(data.get("metadata", {})),
+            sensors=dict(data.get("sensors", {})),
         )
 
     def save_json(self, path: str | Path) -> Path:
@@ -371,6 +412,7 @@ class RunArtifact:
     trace_csv: str
     planner_metrics: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    artifact_refs: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.scenario, ScenarioSpec):
@@ -381,6 +423,10 @@ class RunArtifact:
             "planner_metrics", self.planner_metrics))
         object.__setattr__(self, "metadata", _mapping(
             "metadata", self.metadata))
+        object.__setattr__(self, "artifact_refs", _string_mapping(
+            "artifact_refs", self.artifact_refs))
+        if "trace_csv" in self.artifact_refs:
+            raise ValueError("artifact_refs must not override trace_csv")
 
     def to_dict(self) -> dict[str, Any]:
         data = {
@@ -388,7 +434,8 @@ class RunArtifact:
             "artifact_type": RUN_TYPE,
             "scenario": self.scenario.to_dict(),
             "metrics": self.metrics.to_dict(),
-            "artifacts": {"trace_csv": self.trace_csv},
+            "artifacts": {"trace_csv": self.trace_csv,
+                           **self.artifact_refs},
             "planner_metrics": self.planner_metrics,
             "metadata": self.metadata,
         }
@@ -428,6 +475,11 @@ class RunArtifact:
             trace_csv=str(data.get("artifacts", {}).get("trace_csv", "")),
             planner_metrics=dict(data.get("planner_metrics", {})),
             metadata=dict(data.get("metadata", {})),
+            artifact_refs={
+                str(key): str(value)
+                for key, value in data.get("artifacts", {}).items()
+                if key != "trace_csv"
+            },
         )
 
     def save_json(self, path: str | Path) -> Path:

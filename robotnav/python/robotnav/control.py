@@ -330,6 +330,12 @@ class SimulationConfig:
     allow_reverse: bool = False
     max_reverse_velocity: float = 1.0
     execution_model: str = "kinematic_bicycle"
+    front_axle: float = 0.5
+    rear_axle: float = 0.5
+    mass: float = 20.0
+    yaw_inertia: float = 10.0
+    front_cornering_stiffness: float = 80.0
+    rear_cornering_stiffness: float = 80.0
     track_width: float = 0.5
     max_angular_velocity: float = 3.0
     max_angular_acceleration: float = 4.0
@@ -337,7 +343,7 @@ class SimulationConfig:
 
     def __post_init__(self) -> None:
         if self.execution_model not in {
-            "kinematic_bicycle", "differential_drive",
+            "kinematic_bicycle", "dynamic_bicycle", "differential_drive",
         }:
             raise ValueError(
                 f"unknown execution_model: {self.execution_model}")
@@ -346,6 +352,13 @@ class SimulationConfig:
             "wheelbase": self.wheelbase,
             "track_width": self.track_width,
         }
+        if self.execution_model == "dynamic_bicycle":
+            positive.update({
+                "front_axle": self.front_axle,
+                "rear_axle": self.rear_axle,
+                "mass": self.mass,
+                "yaw_inertia": self.yaw_inertia,
+            })
         non_negative = {
             "max_velocity": self.max_velocity,
             "max_acceleration": self.max_acceleration,
@@ -363,6 +376,17 @@ class SimulationConfig:
         for name, value in non_negative.items():
             if not math.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative")
+        for name, value in {
+            "front_cornering_stiffness": self.front_cornering_stiffness,
+            "rear_cornering_stiffness": self.rear_cornering_stiffness,
+        }.items():
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        if self.execution_model == "dynamic_bicycle" and not math.isclose(
+            self.front_axle + self.rear_axle, self.wheelbase, rel_tol=0.0,
+            abs_tol=1e-6,
+        ):
+            raise ValueError("front_axle + rear_axle must equal wheelbase")
 
     def to_native(self, backend: Any | None = None) -> Any:
         backend = backend or _backend()
@@ -382,6 +406,22 @@ class SimulationConfig:
             options.max_angular_acceleration = self.max_angular_acceleration
             options.max_wheel_velocity = self.max_wheel_velocity
             options.allow_reverse = self.allow_reverse
+            return options
+
+        if self.execution_model == "dynamic_bicycle":
+            if not hasattr(backend, "DynamicBicycleOptions"):
+                raise BackendUnavailableError(
+                    "the installed autompc binding does not support "
+                    "dynamic-bicycle execution")
+            options = backend.DynamicBicycleOptions()
+            for name in (
+                "dt", "wheelbase", "front_axle", "rear_axle", "mass",
+                "yaw_inertia", "front_cornering_stiffness",
+                "rear_cornering_stiffness", "max_velocity",
+                "max_acceleration", "max_deceleration", "max_steering",
+                "max_steering_rate", "allow_reverse", "max_reverse_velocity",
+            ):
+                setattr(options, name, getattr(self, name))
             return options
 
         options = backend.SimulationOptions()
@@ -436,6 +476,13 @@ def simulate(
                 "the installed autompc binding does not support "
                 "differential-drive execution")
         native_simulator = backend.DifferentialDriveSimulator(
+            initial.to_native(backend), config.to_native(backend))
+    elif config.execution_model == "dynamic_bicycle":
+        if not hasattr(backend, "DynamicBicycleSimulator"):
+            raise BackendUnavailableError(
+                "the installed autompc binding does not support "
+                "dynamic-bicycle execution")
+        native_simulator = backend.DynamicBicycleSimulator(
             initial.to_native(backend), config.to_native(backend))
     else:
         native_simulator = backend.KinematicBicycleSimulator(

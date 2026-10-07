@@ -4,6 +4,7 @@
 #include <string>
 
 #include "autompc/simulation/kinematic_bicycle.h"
+#include "autompc/simulation/dynamic_bicycle.h"
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autoplanner/core/planner_factory.h"
 #include "robotnav/dwa_local_planner.h"
@@ -16,6 +17,7 @@ namespace robotnav {
 // Python/CLI callers. The pipeline intentionally keeps all numerical work in
 // the existing AutoPlanner and AutoMPC libraries.
 struct PipelineConfig {
+    std::string execution_model = "kinematic_bicycle";
     std::string planner = "astar";
     std::string controller = "stanley";
     std::string footprint = "point";
@@ -33,6 +35,7 @@ struct PipelineConfig {
     autoplanner::PlannerFactoryOptions planner_options;
     autompc::TrajectoryOptions trajectory_options;
     autompc::SimulationOptions simulation_options;
+    autompc::DynamicBicycleOptions dynamic_bicycle_options;
     SafetyOptions safety_options;
     DwaOptions dwa_options;
     MppiOptions mppi_options;

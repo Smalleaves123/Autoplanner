@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 
@@ -101,6 +102,8 @@ class PerceptionMappingTests(unittest.TestCase):
         frames = [SensorFrame(
             0, 1.5, 2.5,
             (SensorPoint(3.0, 2.5, True, "dynamic"),),
+            timestamp_ns=100,
+            arrival_timestamp_ns=150,
         )]
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_path = Path(temp_dir) / "scan.csv"
@@ -112,6 +115,36 @@ class PerceptionMappingTests(unittest.TestCase):
         self.assertEqual(csv_loaded[0].points, frames[0].points)
         self.assertEqual(json_loaded[0].points, frames[0].points)
         self.assertEqual(json_loaded[0].sensor_x, 1.5)
+        self.assertEqual(csv_loaded[0].timestamp_ns, 100)
+        self.assertEqual(json_loaded[0].arrival_timestamp_ns, 150)
+
+    def test_sensor_stream_json_replay_extracts_lidar_and_timestamps(self) -> None:
+        stream = {
+            "schema_version": 1,
+            "packets": [
+                {
+                    "type": "odometry", "sequence": 0,
+                    "timestamp_ns": 100, "arrival_timestamp_ns": 200,
+                },
+                {
+                    "type": "lidar2d", "sensor_id": "lidar",
+                    "sequence": 3, "timestamp_ns": 300,
+                    "arrival_timestamp_ns": 400,
+                    "pose": {"x": 1.5, "y": 2.5, "theta": 0.0,
+                             "velocity": 0.0},
+                    "angles": [0.0], "ranges": [2.0],
+                    "hits": [True], "kinds": ["dynamic"],
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "stream.json"
+            path.write_text(json.dumps(stream))
+            frames = load_sensor_frames(path)
+        self.assertEqual(list(frames), [3])
+        self.assertEqual(frames[3].points[0],
+                         SensorPoint(3.5, 2.5, True, "dynamic"))
+        self.assertEqual(frames[3].arrival_timestamp_ns, 400)
 
     def test_incremental_replan_avoids_new_local_obstacle(self) -> None:
         grid = [[0 for _ in range(9)] for _ in range(7)]

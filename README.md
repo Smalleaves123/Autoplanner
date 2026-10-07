@@ -290,6 +290,201 @@ simulation = robotnav.simulate(
 print(simulation.metrics.max_cross_track)
 ```
 
+For multi-entity experiments, `SimulationWorld` provides one deterministic
+clock, reset/step semantics, backend selection, immutable observations, and
+pairwise collision reports:
+
+```python
+world = robotnav.SimulationWorld(
+    robotnav.WorldConfig(
+        simulation=robotnav.SimulationConfig(
+            execution_model="differential_drive"),
+        seed=7,
+    ),
+    [robotnav.WorldEntity("robot", robotnav.RobotState(1.0, 1.0))],
+)
+observation = world.step({
+    "robot": robotnav.TwistCommand(0.8, 0.0),
+})
+print(observation.clock.time, observation.collisions)
+```
+
+The world facade is intentionally small: map layers, sensors, and higher-level
+controllers can consume its immutable snapshots without depending on the
+selected native execution backend.
+
+Sensor simulation is available through `SensorSuite`. It currently provides
+2-D LiDAR, odometry, IMU, and a 2.5-D depth image over the same world clock.
+Every packet includes a sequence, event timestamp, arrival timestamp, and
+sensor-specific payload; timing can inject deterministic latency, drops, and
+timestamp jitter:
+
+```python
+sensors = robotnav.SensorSuite(
+    "autoplanner/data/maps/simple_50x50.txt",
+    lidars=[robotnav.Lidar2DConfig(
+        timing=robotnav.SensorTiming(latency_steps=1),)],
+    odometries=[robotnav.OdometryConfig()],
+    imus=[robotnav.ImuConfig()],
+    depth_cameras=[robotnav.DepthCameraConfig()],
+    seed=42,
+)
+batch = sensors.step(world.observation)
+```
+
+Generate a replayable JSON sensor stream with:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/simulate_sensor_stream.py \
+  --steps 100 --latency-steps 1 --drop-probability 0.05 \
+  --output autoplanner/results/sensors/sensor_stream.json
+```
+
+The stream writer flushes delayed packets at the end of a run.  Replay the
+same artifact directly through the occupancy/tracking/replanning pipeline:
+
+```bash
+python autoplanner/scripts/run_perception_pipeline.py \
+  --map autoplanner/data/maps/simple_50x50.txt \
+  --sensor-json autoplanner/results/sensors/sensor_stream.json \
+  --start 2 2 --goal 12 12 \
+  --output-dir autoplanner/results/sensors/perception-replay
+```
+
+The loader still accepts the older `{"frames": [...]}` JSON and CSV formats,
+while packet streams retain `timestamp_ns` and `arrival_timestamp_ns` on each
+LiDAR frame.  Every replay run also writes `experiment_run.json`, a standard
+`robotnav.experiment.run` artifact containing sensor parameters and references
+to the stream, trace, and replay manifest; pass `--experiment-artifact` to
+store it at a custom path.
+
+`LidarScan.to_perception_frame()` emits the endpoint format already consumed
+by the Python perception mapping and replay helpers.  Other simulated world
+entities are ray-cast as `dynamic` returns (their configured collision radius
+is carried in the immutable world observation), so the same packet can feed
+obstacle tracking and prediction.
+
+Run the complete ROS-free feedback loop with:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/simulate_sensor_navigation.py \
+  --steps 100 --latency-steps 1 --drop-probability 0.05 \
+  --output build/sensor-navigation/trace.json
+```
+
+This runner advances `World -> SensorSuite -> PlanarEkf -> OccupancyGrid/tracker ->
+D* Lite -> control -> World`. Odometry velocity and yaw increments are fused
+with IMU yaw rate; IMU acceleration drives prediction. Planning and control
+use the estimate, and LiDAR rays are projected using the estimated **capture-time**
+pose, not the ground-truth pose embedded in a simulation scan. The initial
+pose hint and static map are assumed known. World truth is retained for evaluation;
+dynamic-return labels are still provided by the simulator.
+
+```python
+ekf = robotnav.PlanarEkf(
+    robotnav.RobotState(2.5, 2.5), robotnav.EkfConfig(history_seconds=5.0))
+for packet in batch.ready:
+    if isinstance(packet, (robotnav.OdometryMeasurement, robotnav.ImuMeasurement)):
+        ekf.update(packet)
+current = ekf.estimate_at(int(round(batch.clock.time * 1e9)))
+# For a delayed LiDAR packet:
+# frame = scan.to_perception_frame(pose=ekf.estimate_at(scan.timestamp_ns).state)
+```
+
+`PlanarEkf` uses only the standard library, maintains a 5-by-5 covariance
+(6-by-6 with either IMU bias state, 7-by-7 with both),
+and deterministically replays late observations within bounded history. It
+rejects duplicates, wrong-entity, and expired packets. Without pose corrections
+it is a dead-reckoning baseline. The demo now defaults to `--localization
+scan_matching`: bounded local search and point-to-line ICP align raw LiDAR
+rays to exposed static-map boundaries, then feed `PoseMeasurement` into the
+same EKF history. Dynamic-labeled returns, invisible wall back faces, occluded
+surfaces, and geometrically degenerate fits are excluded/rejected. Set
+`--localization dead_reckoning` for the previous baseline.
+
+This is local known-map localization, **not** SLAM or global relocalization.
+Failed matches fall back to dead reckoning. Pose measurement standard deviations
+are conservative tuning parameters, not an exact ICP covariance; repeated
+scans can share systematic map/ray errors. The demo enables gyro bias estimation
+by default (`--no-estimate-gyro-bias` retains the five-state baseline unless
+acceleration bias estimation is enabled separately). IMU yaw
+rate is modeled as true rate plus bias; unbiased odometry or map pose corrections
+are needed to distinguish the two. `--estimate-acceleration-bias` also estimates
+forward acceleration bias using odometry velocity or map-position references.
+This does not fix shared systematic reference errors or eliminate absolute
+dead-reckoning drift, and is not a full 3-D inertial navigation model.
+The demo emits stop commands when motion
+or LiDAR data exceeds `--max-estimate-age` / `--max-scan-age` (seconds). This
+freshness check is not a complete collision-safety supervisor.
+
+For a noisy, delayed straight-route example:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/simulate_sensor_navigation.py \
+  --steps 100 --goal 8 2 --latency-steps 2 --drop-probability 0.15 \
+  --timestamp-jitter-ns 5000000 --initial-estimate-offset 0.3 0.2 0.05 \
+  --localization scan_matching --output build/sensor-navigation/localized.json
+```
+
+The deterministic JSON trace includes truth/estimated trajectories, covariance,
+position RMSE, heading errors, stale-input stops, dropped/rejected packets,
+tracks, replans, configuration, match quality/rejection reasons, pose correction
+counts, and goal status. `--scan-match-every` controls correction frequency;
+`--scan-match-translation-window` / `--scan-match-rotation-window` bound local
+search, and `--scan-match-position-std` / `--scan-match-heading-std` tune EKF
+correction strength. Complex routes can still
+reach the step limit with the demo's simple waypoint controller.
+
+IMU simulation supports signed `ImuConfig.angular_velocity_bias` (rad/s) and
+`angular_velocity_bias_random_walk_std` (rad/s/sqrt(s)). The seeded random walk
+uses physical simulation time, evolves through dropped packets, and resets
+reproducibly. `SensorSuite.imu_biases` is evaluation-only truth, never included
+in measurement packets or consumed by the EKF. Both sensor runners expose
+`--imu-gyro-bias` / `--imu-gyro-bias-random-walk`; navigation additionally exposes
+`--ekf-gyro-bias-process-std`, estimated bias and uncertainty in JSON.
+
+`ImuConfig.acceleration_bias` (map units/s²) and
+`acceleration_bias_random_walk_std` add independent forward-acceleration
+offset/random walk with the same timing/reset guarantees. Simulator truth is
+available only via `SensorSuite.imu_acceleration_biases`. Enable
+`EkfConfig(estimate_acceleration_bias=True)` independently of gyro estimation;
+`StateEstimate.acceleration_bias` / `acceleration_bias_std` are `None` when
+disabled. Navigation exposes `--imu-acceleration-bias`,
+`--imu-acceleration-bias-random-walk`, `--estimate-acceleration-bias`, and
+`--ekf-acceleration-bias-process-std`; acceleration bias estimation is opt-in.
+
+For an identical-observation comparison (open-loop varying turns, noisy
+unbiased odometry, latency and drops; no map pose corrections):
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/benchmark_imu_bias.py --bias 0.08 \
+  --output build/sensor-navigation/imu-bias-benchmark.json
+```
+
+The benchmark stores delivered packets, shared truth trajectory, both estimates
+and drift metrics. Pending packets at the horizon are reported, not flushed
+into the evaluated estimates. Add `--random-walk-std 0.002` for drifting bias.
+The bias-aware benchmark enables both bias states. To assess learned acceleration
+bias during an odometry interruption on the same stream:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/benchmark_imu_bias.py --bias 0 \
+  --acceleration-bias 0.15 --steps 120 --odometry-outage-start 80 \
+  --output build/sensor-navigation/acceleration-bias-benchmark.json
+```
+
+`--acceleration-random-walk-std` enables drifting acceleration bias. The outage
+withholds odometry captured at/after the specified step from both estimators;
+withheld packets are recorded separately. Overall RMSE includes startup latency.
+Additional outage metrics start at `outage_start + latency_steps`, after older
+odometry deliveries have cleared. This is an estimation benchmark, not the
+navigation runner's stale-input safety behavior.
+
 Select the differential-drive execution model without changing the planner or
 controller API:
 
@@ -323,7 +518,133 @@ python autoplanner/scripts/cross_model_tracking_benchmark.py \
 
 The generated artifacts use the same versioned experiment schema as the
 physics validation runs, including actuator limits, control-compute latency,
-and comparable state/twist traces.
+and comparable state/twist traces. The default `--model both` compares the
+kinematic bicycle, dynamic bicycle, and differential-drive execution models.
+In addition to `experiment_manifest.json` and per-model traces, the command
+writes `comparison.json` and `comparison.csv` with directly comparable error,
+effort, goal, and latency metrics.
+For a dynamic bicycle run in Python, select
+`SimulationConfig(execution_model="dynamic_bicycle")` and configure
+`front_axle`, `rear_axle`, `mass`, `yaw_inertia`, and cornering stiffnesses.
+
+For a deterministic parameter sweep over mass, yaw inertia, and tire
+stiffness, use:
+
+```bash
+PYTHONPATH=build/python-build/python:autoplanner/scripts \
+python autoplanner/scripts/dynamic_bicycle_sweep.py
+```
+
+The sweep writes one trace per case plus `sweep.csv` and `sweep.json`.
+
+The C++ API includes `robotnav::CooperativeAStarPlanner` with two deterministic
+multi-robot modes: the default prioritized Cooperative A* baseline and an
+optional Conflict-Based Search (CBS) mode. Both enforce vertex and edge
+reservations; CBS branches on conflicts and can resolve cases where a fixed
+priority order gets stuck.
+
+Run the bundled multi-agent benchmark with:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/multi_agent_benchmark.py --algorithm both
+```
+
+For reproducible randomized stress scenarios, append seeded assignments to
+the same run:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/multi_agent_benchmark.py \
+  --algorithm both --random-scenarios 20 --random-agents 4 \
+  --seed 1234 --max-cbs-nodes 5000
+```
+
+The JSON ledger stores the seed, starts, goals, per-algorithm summary
+(success rate, successful-run mean makespan/path length, and all-run means),
+and every individual trace so a failed case can be replayed exactly.
+`--max-cbs-nodes` bounds high-level CBS expansion, making large stress runs
+predictable even when a scenario is difficult or unsolvable.
+
+For a reusable scenario corpus with connectivity and shortest-path difficulty
+metadata, generate a manifest first and pass it to the benchmark:
+
+```bash
+python autoplanner/scripts/multi_agent_scenarios.py \
+  --map autoplanner/data/maps/simple_50x50.txt \
+  --output autoplanner/results/multi_agent/scenarios.json \
+  --scenarios 20 --agents 4 --seed 1234 --min-distance 10
+
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/multi_agent_benchmark.py \
+  --scenario-manifest autoplanner/results/multi_agent/scenarios.json \
+  --algorithm both
+```
+
+The manifest stores every start/goal assignment and difficulty summary, so
+different planners and later experiments consume the same tasks.
+
+For a matrix sweep over agent counts, seeds, and CBS budgets, use:
+
+```bash
+PYTHONPATH=build/python-build/python:autoplanner/scripts \
+python autoplanner/scripts/multi_agent_sweep.py \
+  --seeds 1234,1235 \
+  --agent-counts 2,3,4 \
+  --cbs-node-budgets 1000,5000,10000 \
+  --scenarios-per-seed 10
+```
+
+The sweep records success rate, successful-run path metrics, mean/p95 runtime,
+and conflict counts in `multi_agent_sweep.csv` and `.json`.
+
+To render a compact four-panel report from the JSON output:
+
+```bash
+python autoplanner/scripts/plot_multi_agent_sweep.py \
+  --input autoplanner/results/multi_agent_sweep/multi_agent_sweep.json \
+  --output autoplanner/results/multi_agent_sweep/sweep.png
+```
+
+It writes `multi_agent_benchmark.csv` and `.json` with success rate, makespan,
+algorithm, priority order, wait steps, reservation conflicts, total path length, and the padded
+per-timestep `agent_paths` for crossing, four-way, and converging cases. Each
+algorithm/scenario pair gets a long-form `trace_<algorithm>_<scenario>.csv`, which can be rendered
+without changing the planner:
+
+```bash
+python autoplanner/scripts/visualize_multi_agent.py \
+  --map autoplanner/data/maps/simple_50x50.txt \
+  --trace autoplanner/results/multi_agent/trace_cbs_crossing.csv \
+  --output autoplanner/results/multi_agent/crossing.png
+```
+
+The trace records each agent's position at every time step, including padded
+goal occupancy and wait actions, so it can also be consumed by replay or
+collision-analysis tooling.
+
+Validate a generated trace against the map and the multi-agent collision
+rules with:
+
+```bash
+python autoplanner/scripts/validate_multi_agent_trace.py \
+  --map autoplanner/data/maps/simple_50x50.txt \
+  --trace autoplanner/results/multi_agent/trace_cbs_crossing.csv \
+  --output autoplanner/results/multi_agent/crossing_validation.json
+```
+
+Trace rows include an `active` flag, so goal padding does not create false
+collisions after an agent has completed. Use `--allow-shared-goals` when the
+scenario intentionally permits simultaneous completion at a shared target.
+
+The Python API keeps the prioritized baseline as its default; select CBS with
+`plan_cooperative(..., algorithm="cbs")`. For co-located destinations,
+`allow_shared_goals=True` models agents as complete when they reach the shared
+goal at the same time.
+
+Prioritized planning accepts `priority_order=[...]` in the Python API (or
+`--priority-order 2,0,1` in the benchmark); the returned plan list remains in
+the original input-agent order. CBS ignores this setting by design.
 
 See `examples/python/quick_plan.py` and `examples/python/track_path.py` for
 complete runnable examples.

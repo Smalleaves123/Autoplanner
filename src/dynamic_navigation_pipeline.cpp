@@ -7,7 +7,9 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <variant>
 
+#include "autompc/simulation/dynamic_bicycle.h"
 #include "autompc/simulation/kinematic_bicycle.h"
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autoplanner/collision/footprint_collision_checker.h"
@@ -26,6 +28,51 @@
 
 namespace robotnav {
 namespace {
+
+using RuntimeSimulator = std::variant<
+    autompc::KinematicBicycleSimulator,
+    autompc::DynamicBicycleSimulator>;
+
+autompc::DynamicBicycleOptions dynamicOptionsFor(
+    const PipelineConfig& config) {
+    auto options = config.dynamic_bicycle_options;
+    options.dt = config.simulation_options.dt;
+    options.wheelbase = config.simulation_options.wheelbase;
+    options.max_velocity = config.simulation_options.max_velocity;
+    options.max_acceleration = config.simulation_options.max_acceleration;
+    options.max_deceleration = config.simulation_options.max_deceleration;
+    options.max_steering = config.simulation_options.max_steering;
+    options.max_steering_rate = config.simulation_options.max_steering_rate;
+    options.allow_reverse = config.simulation_options.allow_reverse;
+    options.max_reverse_velocity = config.simulation_options.max_reverse_velocity;
+    return options;
+}
+
+bool validDynamicOptions(const autompc::DynamicBicycleOptions& options) {
+    return std::isfinite(options.dt) && options.dt > 0.0 &&
+           std::isfinite(options.wheelbase) && options.wheelbase > 0.0 &&
+           std::isfinite(options.front_axle) && options.front_axle > 0.0 &&
+           std::isfinite(options.rear_axle) && options.rear_axle > 0.0 &&
+           std::abs(options.front_axle + options.rear_axle -
+                    options.wheelbase) <= 1e-6 &&
+           std::isfinite(options.mass) && options.mass > 0.0 &&
+           std::isfinite(options.yaw_inertia) && options.yaw_inertia > 0.0 &&
+           std::isfinite(options.front_cornering_stiffness) &&
+           options.front_cornering_stiffness >= 0.0 &&
+           std::isfinite(options.rear_cornering_stiffness) &&
+           options.rear_cornering_stiffness >= 0.0;
+}
+
+double simulatorSteering(const RuntimeSimulator& simulator) {
+    return std::visit([](const auto& value) { return value.steering(); },
+                      simulator);
+}
+
+autompc::State simulatorStep(RuntimeSimulator& simulator,
+                              const autompc::Control& command) {
+    return std::visit([&](auto& value) { return value.step(command); },
+                      simulator);
+}
 
 struct PreparedGeometry {
     autoplanner::GridMap planning_map;
@@ -415,6 +462,17 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         return fail(StatusCode::InvalidConfiguration,
                     "dynamic pipeline configuration is invalid");
     }
+    if (config.pipeline.execution_model != "kinematic_bicycle" &&
+        config.pipeline.execution_model != "dynamic_bicycle") {
+        return fail(StatusCode::InvalidConfiguration,
+                    "unsupported execution model: " +
+                        config.pipeline.execution_model);
+    }
+    if (config.pipeline.execution_model == "dynamic_bicycle" &&
+        !validDynamicOptions(dynamicOptionsFor(config.pipeline))) {
+        return fail(StatusCode::InvalidConfiguration,
+                    "dynamic bicycle parameters are invalid");
+    }
     if (!std::isfinite(config.pipeline.trajectory_options.max_curvature) ||
         config.pipeline.trajectory_options.max_curvature < 0.0) {
         return fail(StatusCode::InvalidConfiguration,
@@ -601,6 +659,16 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
 
     std::unique_ptr<SafetySupervisor> supervisor;
     std::unique_ptr<LocalPlanner> local_planner;
+    auto rollout_options = config.pipeline.simulation_options;
+    rollout_options.execution_model = config.pipeline.execution_model;
+    rollout_options.front_axle = config.pipeline.dynamic_bicycle_options.front_axle;
+    rollout_options.rear_axle = config.pipeline.dynamic_bicycle_options.rear_axle;
+    rollout_options.mass = config.pipeline.dynamic_bicycle_options.mass;
+    rollout_options.yaw_inertia = config.pipeline.dynamic_bicycle_options.yaw_inertia;
+    rollout_options.front_cornering_stiffness =
+        config.pipeline.dynamic_bicycle_options.front_cornering_stiffness;
+    rollout_options.rear_cornering_stiffness =
+        config.pipeline.dynamic_bicycle_options.rear_cornering_stiffness;
     auto rebuildRuntimeSafety = [&]() {
         supervisor.reset();
         local_planner.reset();
@@ -609,7 +677,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         if (config.pipeline.local_planner != "none") {
             local_planner = createLocalPlanner(
                 config.pipeline.local_planner, *geometry.checker,
-                config.pipeline.simulation_options,
+                rollout_options,
                 config.pipeline.dwa_options,
                 config.pipeline.mppi_options);
         }
@@ -633,8 +701,12 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
         return fail(StatusCode::Collision,
                     "initial state is not safe for the configured footprint");
     }
-    autompc::KinematicBicycleSimulator simulator(
-        state, config.pipeline.simulation_options);
+    RuntimeSimulator simulator =
+        config.pipeline.execution_model == "dynamic_bicycle"
+            ? RuntimeSimulator(autompc::DynamicBicycleSimulator(
+                  state, dynamicOptionsFor(config.pipeline)))
+            : RuntimeSimulator(autompc::KinematicBicycleSimulator(
+                  state, config.pipeline.simulation_options));
     auto controller = createController(
         config.pipeline.controller, config.pipeline.simulation_options);
     if (!controller) {
@@ -869,7 +941,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                          result.metrics.steps < config.pipeline.max_steps;
                          ++stop) {
                         const autompc::Control command{0.0, 0.0};
-                        state = simulator.step(command);
+                        state = simulatorStep(simulator, command);
                         appendSample(frame, stop, command, false, obstacle,
                                      dstar_ms, astar_ms,
                                      std::numeric_limits<double>::quiet_NaN(),
@@ -889,7 +961,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                      result.metrics.steps < config.pipeline.max_steps;
                      ++stop) {
                     const autompc::Control command{0.0, 0.0};
-                    state = simulator.step(command);
+                    state = simulatorStep(simulator, command);
                     appendSample(frame, stop, command, false, obstacle,
                                  dstar_ms, astar_ms,
                                  std::numeric_limits<double>::quiet_NaN(),
@@ -952,7 +1024,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                     time};
                 const auto local_planner_begin = std::chrono::steady_clock::now();
                 const auto decision = local_planner->computeCommand(
-                    state, simulator.steering(), trajectory, command,
+                    state, simulatorSteering(simulator), trajectory, command,
                     dynamic_context);
                 result.metrics.local_planner_time_ms +=
                     std::chrono::duration<double, std::milli>(
@@ -1025,7 +1097,7 @@ DynamicPipelineResult DynamicNavigationPipeline::run(
                 std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - control_begin).count();
             compute_latency_samples.push_back(compute_latency_ms);
-            state = simulator.step(command);
+            state = simulatorStep(simulator, command);
             const auto state_check = supervisor->validateState(state);
             const double dynamic_frame = predictionFrameAtTime(
                 time + config.pipeline.simulation_options.dt,

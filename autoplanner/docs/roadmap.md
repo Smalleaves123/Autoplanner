@@ -73,8 +73,47 @@ integration surfaces.
 - [x] Add controller-command adaptation with explicit steering/twist
   conversion contracts.
 - [x] Add deterministic cross-model tracking benchmarks and schema fields.
-- [ ] Evaluate a dynamic bicycle model after establishing cross-model
-  baselines.
+- [x] Add a dynamic bicycle model after establishing cross-model baselines.
+
+## Phase 7: Simulation experiment tooling
+
+- [x] Add deterministic prioritized Cooperative A* and CBS multi-agent
+  baselines with seeded benchmarks.
+- [x] Add reusable connected scenario manifests with shortest-path difficulty
+  metadata.
+- [x] Add a backend-neutral Python World/Clock/Entity observation facade with
+  reset, step, and pairwise collision semantics.
+- [x] Add deterministic 2-D LiDAR, odometry, IMU, and 2.5-D depth sensor
+  simulation with latency, drops, noise, and timestamp perturbations.
+- [x] Ray-cast other world entities as dynamic LiDAR returns and preserve
+  return semantics through the perception adapter.
+- [x] Flush and replay packet-oriented multi-sensor streams without losing
+  LiDAR timing metadata or compatibility with the legacy frame format.
+- [x] Record sensor replay parameters and output references in the unified
+  versioned experiment run artifact.
+- [x] Add a replayable sensor-to-perception-to-planning-to-control closed-loop
+  runner with deterministic JSON traces.
+- [x] Add a planar odometry/IMU EKF dead-reckoning baseline with covariance,
+  fixed-lag event replay, capture-time LiDAR projection, and estimated-state
+  planning/control (known initial pose).
+- [x] Add known-map scan matching with visibility/degeneracy rejection and
+  delayed EKF pose corrections; compare drift on identical biased observations.
+- [x] Add seeded gyro bias/random-walk simulation through packet drops, optional
+  six-state EKF bias estimation, and identical-stream drift comparison tooling.
+- [x] Add independent forward-acceleration bias/random-walk simulation, optional
+  acceleration bias estimation, and identical-stream odometry-outage benchmarks.
+- [ ] Add global relocalization and broader localization
+  failure/ambiguity benchmarks against the dead-reckoning baseline.
+- [x] Add multi-agent parameter sweeps, trace visualization, and collision
+  validation tools.
+- [ ] Store multi-agent runs in the versioned experiment manifest schema used
+  by single-robot and physics experiments.
+- [ ] Add resumable batch execution, per-case timeouts, and failure bundles for
+  multi-agent sweeps.
+- [ ] Connect discrete multi-agent plans to continuous dynamic bicycle and
+  differential-drive execution simulation.
+- [x] Build a replayable perception-to-prediction-to-planning closed-loop
+  scenario runner.
 
 ## Later research tracks
 
@@ -82,6 +121,7 @@ integration surfaces.
 - Multi-modal learned obstacle prediction with classical safety supervision.
 - Residual dynamics learning for MPPI.
 - Anytime and risk-bounded kinodynamic planning.
+- Conflict-based multi-agent planning with bounded suboptimality (ECBS).
 
 These tracks should start only after the deterministic dynamic-navigation
 baseline and evaluation contracts are stable.

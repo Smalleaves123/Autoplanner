@@ -57,6 +57,26 @@ class ControlFacadeTests(unittest.TestCase):
         self.assertEqual(result.execution_model, "differential_drive")
         self.assertGreater(result.states[-1].x, result.states[0].x)
 
+    def test_dynamic_bicycle_execution_model(self) -> None:
+        planned = robotnav.plan(MAP, (1, 1), (12, 12))
+        trajectory = robotnav.generate_trajectory(planned)
+        controller = robotnav.Controller(
+            robotnav.ControllerConfig(controller="stanley"))
+        config = robotnav.SimulationConfig(
+            execution_model="dynamic_bicycle",
+            front_axle=0.45,
+            rear_axle=0.55,
+            mass=25.0,
+            yaw_inertia=12.0,
+        )
+        result = robotnav.simulate(
+            robotnav.RobotState(1.0, 1.0), trajectory, controller,
+            config=config, max_time=1.0)
+        self.assertTrue(result.states)
+        self.assertEqual(len(result.states), len(result.controls))
+        self.assertEqual(result.execution_model, "dynamic_bicycle")
+        self.assertTrue(all(math.isfinite(state.x) for state in result.states))
+
     def test_steering_to_twist_preserves_signed_curvature(self) -> None:
         steering = math.atan(0.5)
         forward = robotnav.steering_to_twist(
@@ -71,6 +91,10 @@ class ControlFacadeTests(unittest.TestCase):
     def test_simulation_config_rejects_unknown_or_invalid_models(self) -> None:
         with self.assertRaises(ValueError):
             robotnav.SimulationConfig(execution_model="omnidirectional")
+        with self.assertRaises(ValueError):
+            robotnav.SimulationConfig(
+                execution_model="dynamic_bicycle", front_axle=0.25,
+                rear_axle=0.25, wheelbase=1.0)
         with self.assertRaises(ValueError):
             robotnav.SimulationConfig(track_width=0.0)
         with self.assertRaises(ValueError):

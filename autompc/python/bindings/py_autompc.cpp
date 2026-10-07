@@ -47,6 +47,7 @@ PYBIND11_MODULE(_autompc, m) {
 
     py::class_<SimulationOptions>(m, "SimulationOptions")
         .def(py::init<>())
+        .def_readwrite("execution_model", &SimulationOptions::execution_model)
         .def_readwrite("dt", &SimulationOptions::dt)
         .def_readwrite("wheelbase", &SimulationOptions::wheelbase)
         .def_readwrite("max_velocity", &SimulationOptions::max_velocity)
@@ -56,7 +57,15 @@ PYBIND11_MODULE(_autompc, m) {
         .def_readwrite("max_steering_rate", &SimulationOptions::max_steering_rate)
         .def_readwrite("allow_reverse", &SimulationOptions::allow_reverse)
         .def_readwrite("max_reverse_velocity",
-                       &SimulationOptions::max_reverse_velocity);
+                       &SimulationOptions::max_reverse_velocity)
+        .def_readwrite("front_axle", &SimulationOptions::front_axle)
+        .def_readwrite("rear_axle", &SimulationOptions::rear_axle)
+        .def_readwrite("mass", &SimulationOptions::mass)
+        .def_readwrite("yaw_inertia", &SimulationOptions::yaw_inertia)
+        .def_readwrite("front_cornering_stiffness",
+                       &SimulationOptions::front_cornering_stiffness)
+        .def_readwrite("rear_cornering_stiffness",
+                       &SimulationOptions::rear_cornering_stiffness);
 
     py::class_<KinematicBicycleSimulator>(m, "KinematicBicycleSimulator")
         .def(py::init<const State&, SimulationOptions>(),
@@ -70,6 +79,44 @@ PYBIND11_MODULE(_autompc, m) {
                                &KinematicBicycleSimulator::steering)
         .def_property_readonly("options",
                                &KinematicBicycleSimulator::options,
+                               py::return_value_policy::reference_internal);
+
+    py::class_<DynamicBicycleOptions>(m, "DynamicBicycleOptions")
+        .def(py::init<>())
+        .def_readwrite("dt", &DynamicBicycleOptions::dt)
+        .def_readwrite("wheelbase", &DynamicBicycleOptions::wheelbase)
+        .def_readwrite("front_axle", &DynamicBicycleOptions::front_axle)
+        .def_readwrite("rear_axle", &DynamicBicycleOptions::rear_axle)
+        .def_readwrite("mass", &DynamicBicycleOptions::mass)
+        .def_readwrite("yaw_inertia", &DynamicBicycleOptions::yaw_inertia)
+        .def_readwrite("front_cornering_stiffness",
+                       &DynamicBicycleOptions::front_cornering_stiffness)
+        .def_readwrite("rear_cornering_stiffness",
+                       &DynamicBicycleOptions::rear_cornering_stiffness)
+        .def_readwrite("max_velocity", &DynamicBicycleOptions::max_velocity)
+        .def_readwrite("max_acceleration",
+                       &DynamicBicycleOptions::max_acceleration)
+        .def_readwrite("max_deceleration",
+                       &DynamicBicycleOptions::max_deceleration)
+        .def_readwrite("max_steering", &DynamicBicycleOptions::max_steering)
+        .def_readwrite("max_steering_rate",
+                       &DynamicBicycleOptions::max_steering_rate)
+        .def_readwrite("allow_reverse", &DynamicBicycleOptions::allow_reverse)
+        .def_readwrite("max_reverse_velocity",
+                       &DynamicBicycleOptions::max_reverse_velocity);
+
+    py::class_<DynamicBicycleSimulator>(m, "DynamicBicycleSimulator")
+        .def(py::init<const State&, DynamicBicycleOptions>(),
+             py::arg("initial"), py::arg("options") = DynamicBicycleOptions{})
+        .def("step", &DynamicBicycleSimulator::step)
+        .def("reset", &DynamicBicycleSimulator::reset)
+        .def_property_readonly("state", &DynamicBicycleSimulator::state,
+                               py::return_value_policy::reference_internal)
+        .def_property_readonly("steering", &DynamicBicycleSimulator::steering)
+        .def_property_readonly("lateral_velocity",
+                               &DynamicBicycleSimulator::lateralVelocity)
+        .def_property_readonly("yaw_rate", &DynamicBicycleSimulator::yawRate)
+        .def_property_readonly("options", &DynamicBicycleSimulator::options,
                                py::return_value_policy::reference_internal);
 
     py::class_<DifferentialDriveOptions>(m, "DifferentialDriveOptions")

@@ -31,6 +31,7 @@ set(AUTOMPC_SOURCES
     src/trajectory/trajectory_generator.cpp
     src/simulation/differential_drive.cpp
     src/simulation/kinematic_bicycle.cpp
+    src/simulation/dynamic_bicycle.cpp
 )
 
 if(Eigen3_FOUND)

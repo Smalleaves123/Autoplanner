@@ -94,4 +94,9 @@ void KinematicBicycleSimulator::reset(const State& state) {
     steering_ = 0.0;
 }
 
+void KinematicBicycleSimulator::setSteering(double steering) {
+    steering_ = clampFinite(steering, -options_.max_steering,
+                            options_.max_steering);
+}
+
 }  // namespace autompc

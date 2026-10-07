@@ -105,40 +105,9 @@ autompc::TrajectoryPoint lookaheadReference(
     return trajectory.back();
 }
 
-autompc::State rolloutStep(const autompc::State& state,
-                           double& steering,
-                           const autompc::Control& command,
-                           const autompc::SimulationOptions& options) {
-    const double minimum_velocity = options.allow_reverse
-        ? -options.max_reverse_velocity : 0.0;
-    const double target_velocity = clampFinite(
-        command.velocity, minimum_velocity, options.max_velocity);
-    const double velocity_delta = target_velocity - state.v;
-    const double acceleration_limit = velocity_delta >= 0.0
-        ? options.max_acceleration
-        : options.max_deceleration;
-    const double max_velocity_delta = acceleration_limit * options.dt;
-    const double next_velocity = state.v + std::clamp(
-        velocity_delta, -max_velocity_delta, max_velocity_delta);
-
-    const double target_steering = clampFinite(
-        command.steering, -options.max_steering, options.max_steering);
-    const double steering_delta = target_steering - steering;
-    const double max_steering_delta = options.max_steering_rate * options.dt;
-    const double next_steering = steering + std::clamp(
-        steering_delta, -max_steering_delta, max_steering_delta);
-
-    const double velocity_midpoint = 0.5 * (state.v + next_velocity);
-    const double steering_midpoint = 0.5 * (steering + next_steering);
-    autompc::State next = state;
-    next.x += velocity_midpoint * std::cos(state.theta) * options.dt;
-    next.y += velocity_midpoint * std::sin(state.theta) * options.dt;
-    next.theta += velocity_midpoint / options.wheelbase *
-                  std::tan(steering_midpoint) * options.dt;
-    next.theta = normalizeAngle(next.theta);
-    next.v = next_velocity;
-    steering = next_steering;
-    return next;
+autompc::State rolloutStep(RolloutSimulator& simulator,
+                           const autompc::Control& command) {
+    return simulator.step(command);
 }
 
 double scoreEndpoint(const autompc::State& endpoint,
@@ -238,16 +207,16 @@ DwaDecision DwaLocalPlanner::computeCommand(
         for (const double steering_command : steering_samples) {
             const autompc::Control candidate{velocity, steering_command};
             autompc::State predicted = state;
-            double predicted_steering = current_steering;
+            RolloutSimulator simulator(state, simulation_options_.dt,
+                                       simulation_options_);
+            simulator.setSteering(current_steering);
             bool collision_free = true;
             double candidate_clearance =
                 std::numeric_limits<double>::infinity();
             double elapsed_seconds = 0.0;
             for (int step = 0; step < rollout_steps; ++step) {
                 const auto previous = predicted;
-                predicted = rolloutStep(
-                    predicted, predicted_steering, candidate,
-                    simulation_options_);
+                predicted = rolloutStep(simulator, candidate);
                 if (!collision_checker_.isPoseSegmentValid(
                         {previous.x, previous.y, previous.theta},
                         {predicted.x, predicted.y, predicted.theta})) {

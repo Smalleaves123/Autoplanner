@@ -640,6 +640,41 @@ TEST(NavigationPipelineTest, RunsPlanningTrackingAndTrace) {
     EXPECT_TRUE(std::isfinite(result.metrics.max_cross_track_error));
 }
 
+TEST(NavigationPipelineTest, SupportsDynamicBicycleExecutionModel) {
+    const auto map = loadSimpleMap();
+    robotnav::PipelineConfig config;
+    config.planner = "astar";
+    config.controller = "stanley";
+    config.execution_model = "dynamic_bicycle";
+    config.dynamic_bicycle_options.front_axle = 0.45;
+    config.dynamic_bicycle_options.rear_axle = 0.55;
+    config.dynamic_bicycle_options.mass = 25.0;
+    config.dynamic_bicycle_options.yaw_inertia = 12.0;
+    config.max_steps = 2500;
+
+    const auto result = robotnav::NavigationPipeline{}.run(
+        map, {1, 1}, {48, 48}, config);
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
+    EXPECT_FALSE(result.trace.empty());
+    for (const auto& sample : result.trace.samples()) {
+        EXPECT_TRUE(std::isfinite(sample.state.x));
+        EXPECT_TRUE(std::isfinite(sample.state.y));
+        EXPECT_TRUE(std::isfinite(sample.state.theta));
+    }
+}
+
+TEST(NavigationPipelineTest, RejectsInvalidDynamicBicycleParameters) {
+    auto config = robotnav::PipelineConfig{};
+    config.execution_model = "dynamic_bicycle";
+    config.dynamic_bicycle_options.front_axle = 0.25;
+    config.dynamic_bicycle_options.rear_axle = 0.25;
+    const auto result = robotnav::NavigationPipeline{}.run(
+        loadSimpleMap(), {1, 1}, {10, 10}, config);
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::InvalidConfiguration);
+}
+
 TEST(NavigationPipelineTest, SupportsRectangleFootprintAndSmoothing) {
     const auto map = loadSimpleMap();
     robotnav::PipelineConfig config;
@@ -684,6 +719,30 @@ TEST(NavigationPipelineTest, SupportsDwaLocalPlanner) {
         << result.message;
     EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_EQ(result.metrics.local_planner, "dwa");
+    EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
+}
+
+TEST(NavigationPipelineTest, SupportsDynamicBicycleDwaRollouts) {
+    const auto map = loadSimpleMap();
+    robotnav::PipelineConfig config;
+    config.planner = "astar";
+    config.controller = "stanley";
+    config.execution_model = "dynamic_bicycle";
+    config.dynamic_bicycle_options.front_axle = 0.45;
+    config.dynamic_bicycle_options.rear_axle = 0.55;
+    config.dynamic_bicycle_options.mass = 25.0;
+    config.dynamic_bicycle_options.yaw_inertia = 12.0;
+    config.local_planner = "dwa";
+    config.dwa_options.prediction_time = 0.6;
+    config.dwa_options.velocity_samples = 3;
+    config.dwa_options.steering_samples = 5;
+    config.max_steps = 3000;
+
+    const auto result = robotnav::NavigationPipeline{}.run(
+        map, {1, 1}, {20, 20}, config);
+    EXPECT_EQ(result.metrics.status, robotnav::StatusCode::Success)
+        << result.message;
+    EXPECT_TRUE(result.metrics.goal_reached);
     EXPECT_GT(result.metrics.local_planner_adjustments, 0u);
 }
 
@@ -1160,6 +1219,10 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
                << "  risk_clearance: 1.2\n"
                << "pipeline:\n"
                << "  max_steps: 123\n"
+               << "simulation:\n"
+               << "  execution_model: dynamic_bicycle\n"
+               << "  front_axle: 0.4\n"
+               << "  rear_axle: 0.6\n"
                << "safety:\n"
                << "  enforce_collision: false\n";
     }
@@ -1213,6 +1276,9 @@ TEST(ScenarioConfigTest, LoadsPipelineValues) {
     EXPECT_DOUBLE_EQ(
         scenario.pipeline.dynamic_prediction_risk_clearance, 1.2);
     EXPECT_EQ(scenario.pipeline.max_steps, 123u);
+    EXPECT_EQ(scenario.pipeline.execution_model, "dynamic_bicycle");
+    EXPECT_DOUBLE_EQ(scenario.pipeline.dynamic_bicycle_options.front_axle, 0.4);
+    EXPECT_DOUBLE_EQ(scenario.pipeline.dynamic_bicycle_options.rear_axle, 0.6);
     EXPECT_FALSE(scenario.pipeline.safety_options.enforce_collision);
 
     std::error_code error;

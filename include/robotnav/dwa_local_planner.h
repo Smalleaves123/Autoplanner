@@ -8,6 +8,7 @@
 #include "autompc/simulation/kinematic_bicycle.h"
 #include "autoplanner/collision/collision_checker.h"
 #include "robotnav/dynamic_obstacle_context.h"
+#include "robotnav/rollout_simulator.h"
 
 namespace robotnav {
 

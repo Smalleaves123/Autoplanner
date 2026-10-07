@@ -36,6 +36,23 @@ DifferentialDriveOptions constrainedDifferentialOptions() {
     return options;
 }
 
+DynamicBicycleOptions constrainedDynamicOptions() {
+    DynamicBicycleOptions options;
+    options.dt = 0.01;
+    options.wheelbase = 2.0;
+    options.front_axle = 0.9;
+    options.rear_axle = 1.1;
+    options.mass = 25.0;
+    options.yaw_inertia = 12.0;
+    options.front_cornering_stiffness = 100.0;
+    options.rear_cornering_stiffness = 110.0;
+    options.max_velocity = 3.0;
+    options.max_acceleration = 4.0;
+    options.max_steering = 0.5;
+    options.max_steering_rate = 4.0;
+    return options;
+}
+
 }  // namespace
 
 TEST(KinematicBicycle, LimitsAccelerationAndVelocity) {
@@ -110,6 +127,27 @@ TEST(KinematicBicycle, SupportsBoundedReverseVelocityWhenEnabled) {
 
     EXPECT_NEAR(simulator.state().v, -0.5, 1e-9);
     EXPECT_LT(simulator.state().x, 0.0);
+}
+
+TEST(DynamicBicycle, BuildsLateralResponseAndYawRate) {
+    DynamicBicycleSimulator simulator(
+        {0.0, 0.0, 0.0, 1.0}, constrainedDynamicOptions());
+    for (int index = 0; index < 100; ++index) {
+        simulator.step({1.0, 0.25});
+    }
+    EXPECT_GT(simulator.state().x, 0.0);
+    EXPECT_GT(simulator.state().theta, 0.0);
+    EXPECT_TRUE(std::isfinite(simulator.lateralVelocity()));
+    EXPECT_TRUE(std::isfinite(simulator.yawRate()));
+    EXPECT_GT(simulator.yawRate(), 0.0);
+}
+
+TEST(DynamicBicycle, RejectsMismatchedAxleGeometry) {
+    auto options = constrainedDynamicOptions();
+    options.rear_axle = 0.9;
+    EXPECT_THROW(
+        DynamicBicycleSimulator({0.0, 0.0, 0.0, 0.0}, options),
+        std::invalid_argument);
 }
 
 TEST(DifferentialDrive, LimitsLinearAndAngularAcceleration) {

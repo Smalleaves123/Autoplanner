@@ -39,6 +39,35 @@ from .dynamic import (
     run_dynamic,
     run_dynamic_scenario,
 )
+from .multi_agent import (
+    CooperativeAgentPlan,
+    CooperativePlanResult,
+    plan_cooperative,
+)
+from .simulation import (
+    EntityObservation,
+    SimulationClock,
+    SimulationWorld,
+    WorldConfig,
+    WorldEntity,
+    WorldObservation,
+)
+from .sensors import (
+    DepthCameraConfig,
+    DepthImage,
+    GridSensorMap,
+    ImuConfig,
+    ImuMeasurement,
+    Lidar2DConfig,
+    LidarScan,
+    OdometryConfig,
+    OdometryMeasurement,
+    SensorBatch,
+    SensorSuite,
+    SensorTiming,
+)
+from .estimation import EkfConfig, PlanarEkf, PoseMeasurement, StateEstimate
+from .localization import GridScanMatcher, ScanMatcherConfig, ScanMatchResult
 
 __all__ = [
     "BackendUnavailableError",
@@ -68,6 +97,34 @@ __all__ = [
     "ObstacleUpdate",
     "run_dynamic",
     "run_dynamic_scenario",
+    "CooperativeAgentPlan",
+    "CooperativePlanResult",
+    "plan_cooperative",
+    "SimulationClock",
+    "WorldConfig",
+    "WorldEntity",
+    "EntityObservation",
+    "WorldObservation",
+    "SimulationWorld",
+    "SensorTiming",
+    "Lidar2DConfig",
+    "LidarScan",
+    "OdometryConfig",
+    "OdometryMeasurement",
+    "ImuConfig",
+    "ImuMeasurement",
+    "DepthCameraConfig",
+    "DepthImage",
+    "GridSensorMap",
+    "SensorBatch",
+    "SensorSuite",
+    "EkfConfig",
+    "PlanarEkf",
+    "StateEstimate",
+    "PoseMeasurement",
+    "GridScanMatcher",
+    "ScanMatcherConfig",
+    "ScanMatchResult",
 ]
 
 __version__ = "0.6.0"

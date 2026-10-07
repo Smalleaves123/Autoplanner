@@ -10,6 +10,7 @@
 #include "autompc/trajectory/trajectory_generator.h"
 #include "autompc/simulation/differential_drive.h"
 #include "autompc/simulation/kinematic_bicycle.h"
+#include "autompc/simulation/dynamic_bicycle.h"
 
 #ifdef AUTOMPC_HAS_EIGEN
 #include "autompc/controllers/lqr_controller.h"

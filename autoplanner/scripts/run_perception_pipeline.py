@@ -31,6 +31,13 @@ from perception_mapping import (
     save_sensor_csv,
     tracked_obstacle_updates,
 )
+from experiment_schema import (
+    BackendSpec,
+    RunArtifact,
+    RunMetrics,
+    ScenarioSpec,
+    SimulationSpec,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -65,6 +72,16 @@ def _replay_fingerprint(output_dir: Path) -> str:
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def _path_length(rows: list[dict[str, object]]) -> float:
+    total = 0.0
+    for previous, current in zip(rows, rows[1:]):
+        total += math.hypot(
+            float(current["robot_x"]) - float(previous["robot_x"]),
+            float(current["robot_y"]) - float(previous["robot_y"]),
+        )
+    return total
 
 
 def _parse_obstacle(values: list[str]) -> SimulatedObstacle:
@@ -337,6 +354,71 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "mppi_rollouts": args.cpp_mppi_rollouts,
             "command": cpp_result["command"],
         }
+    experiment_path = (_resolve_path(args.experiment_artifact)
+                       if args.experiment_artifact
+                       else output_dir / "experiment_run.json")
+    final_goal_distance = math.hypot(
+        robot[0] - args.goal[0], robot[1] - args.goal[1])
+    experiment = RunArtifact(
+        scenario=ScenarioSpec(
+            scenario_id=f"perception_replay_{map_path.stem}",
+            backend=BackendSpec("kinematic", "constrained_bicycle"),
+            simulation=SimulationSpec(dt=0.1),
+            map_path=str(map_path),
+            path=str(output_dir / "trace.csv"),
+            start=tuple(float(value) for value in args.start),
+            goal=tuple(float(value) for value in args.goal),
+            planner="dstar_lite",
+            controller="grid_feedback",
+            max_steps=max(1, args.frames),
+            goal_tolerance=0.0,
+            seed=args.seed,
+            metadata={"runner": "run_perception_pipeline"},
+            sensors={
+                "source": source,
+                "seed": args.seed,
+                "beams": args.beams,
+                "sensor_range": args.sensor_range,
+                "ray_step": args.ray_step,
+                "sensor_noise": args.sensor_noise,
+                "unknown_policy": args.unknown_policy,
+                "initial_unknown": args.initial_unknown,
+            },
+        ),
+        metrics=RunMetrics(
+            status="goal_reached" if robot == tuple(args.goal) else "step_limit",
+            run_success=True,
+            goal_reached=robot == tuple(args.goal),
+            steps=len(trace_rows),
+            goal_time_s=(len(trace_rows) * 0.1
+                         if robot == tuple(args.goal) else None),
+            goal_distance=final_goal_distance,
+            actual_path_length=_path_length(trace_rows),
+        ),
+        trace_csv=str(output_dir / "trace.csv"),
+        planner_metrics={
+            "replanning_count": total_replans,
+            "dynamic_detection_count": total_detections,
+            "minimum_path_clearance": _finite_or_blank(min_clearance),
+        },
+        artifact_refs={
+            "sensor_stream": str(_resolve_path(input_path))
+            if input_path else "",
+            "replay_manifest": str(output_dir / "replay_manifest.json"),
+        },
+    )
+    # Empty sensor_stream is a valid explicit marker for generated scans, but
+    # omit it so artifact references remain paths to actual files.
+    if not input_path:
+        experiment = RunArtifact(
+            scenario=experiment.scenario, metrics=experiment.metrics,
+            trace_csv=experiment.trace_csv,
+            planner_metrics=experiment.planner_metrics,
+            metadata=experiment.metadata,
+            artifact_refs={"replay_manifest": str(output_dir / "replay_manifest.json")},
+        )
+    experiment.save_json(experiment_path)
+    summary["artifacts"]["experiment_run"] = str(experiment_path)
     (output_dir / "replay_manifest.json").write_text(
         json.dumps(manifest, indent=2, allow_nan=False) + "\n")
     (output_dir / "summary.json").write_text(
@@ -369,6 +451,11 @@ def main() -> int:
     parser.add_argument("--robot-radius", type=float, default=0.0)
     parser.add_argument("--prediction-frames", type=int, default=5)
     parser.add_argument("--output-dir", default="autoplanner/results/perception_pipeline")
+    parser.add_argument(
+        "--experiment-artifact", default=None,
+        help="optional path for the versioned RunArtifact JSON (defaults to "
+             "<output-dir>/experiment_run.json)",
+    )
     parser.add_argument(
         "--cpp-build-dir",
         help="also replay tracked updates through the C++ dynamic pipeline")

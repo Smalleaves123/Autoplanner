@@ -108,6 +108,8 @@ bool loadScenarioConfig(const std::string& file_path,
         "trajectory.enforce_kinematic_constraints",
         pipeline.enforce_kinematic_constraints);
 
+    pipeline.execution_model = loader.getString(
+        "simulation.execution_model", pipeline.execution_model);
     pipeline.simulation_options.dt = loader.getDouble(
         "simulation.dt", pipeline.simulation_options.dt);
     pipeline.simulation_options.wheelbase = loader.getDouble(
@@ -130,6 +132,20 @@ bool loadScenarioConfig(const std::string& file_path,
     pipeline.simulation_options.max_steering_rate = loader.getDouble(
         "simulation.max_steering_rate",
         pipeline.simulation_options.max_steering_rate);
+    pipeline.dynamic_bicycle_options.front_axle = loader.getDouble(
+        "simulation.front_axle", pipeline.dynamic_bicycle_options.front_axle);
+    pipeline.dynamic_bicycle_options.rear_axle = loader.getDouble(
+        "simulation.rear_axle", pipeline.dynamic_bicycle_options.rear_axle);
+    pipeline.dynamic_bicycle_options.mass = loader.getDouble(
+        "simulation.mass", pipeline.dynamic_bicycle_options.mass);
+    pipeline.dynamic_bicycle_options.yaw_inertia = loader.getDouble(
+        "simulation.yaw_inertia", pipeline.dynamic_bicycle_options.yaw_inertia);
+    pipeline.dynamic_bicycle_options.front_cornering_stiffness = loader.getDouble(
+        "simulation.front_cornering_stiffness",
+        pipeline.dynamic_bicycle_options.front_cornering_stiffness);
+    pipeline.dynamic_bicycle_options.rear_cornering_stiffness = loader.getDouble(
+        "simulation.rear_cornering_stiffness",
+        pipeline.dynamic_bicycle_options.rear_cornering_stiffness);
 
     pipeline.dwa_options.prediction_time = loader.getDouble(
         "local_planner.dwa.prediction_time",

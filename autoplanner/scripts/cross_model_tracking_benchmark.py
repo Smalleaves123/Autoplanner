@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a deterministic tracking benchmark across kinematic execution models.
+"""Run a deterministic tracking benchmark across execution models.
 
 The planner-independent polyline, controller configuration, seed, and route
 are identical for both runs. Each execution is written as a versioned
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 from pathlib import Path
 from typing import Iterable
@@ -98,6 +99,12 @@ def simulation_spec(config: robotnav.SimulationConfig) -> SimulationSpec:
         max_angular_velocity=config.max_angular_velocity,
         max_angular_acceleration=config.max_angular_acceleration,
         max_wheel_velocity=config.max_wheel_velocity,
+        front_axle=config.front_axle,
+        rear_axle=config.rear_axle,
+        mass=config.mass,
+        yaw_inertia=config.yaw_inertia,
+        front_cornering_stiffness=config.front_cornering_stiffness,
+        rear_cornering_stiffness=config.rear_cornering_stiffness,
     )
 
 
@@ -121,6 +128,12 @@ def run_model(
         max_angular_velocity=args.max_angular_velocity,
         max_angular_acceleration=args.max_angular_acceleration,
         max_wheel_velocity=args.max_wheel_velocity,
+        front_axle=args.front_axle,
+        rear_axle=args.rear_axle,
+        mass=args.mass,
+        yaw_inertia=args.yaw_inertia,
+        front_cornering_stiffness=args.front_cornering_stiffness,
+        rear_cornering_stiffness=args.rear_cornering_stiffness,
     )
     controller = robotnav.Controller(robotnav.ControllerConfig(
         controller=args.controller,
@@ -155,6 +168,7 @@ def run_model(
         result.compute_latency_ms)
     backend_model = {
         "kinematic_bicycle": "constrained_bicycle",
+        "dynamic_bicycle": "constrained_dynamic_bicycle",
         "differential_drive": "constrained_differential_drive",
     }[model]
     scenario = ScenarioSpec(
@@ -206,7 +220,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", default="autoplanner/results/cross_model")
     parser.add_argument("--scenario-id", default="cross_model_tracking")
     parser.add_argument("--model", choices=(
-        "both", "kinematic_bicycle", "differential_drive"), default="both")
+        "both", "kinematic_bicycle", "dynamic_bicycle",
+        "differential_drive"), default="both")
     parser.add_argument("--controller", choices=("stanley", "mpc"),
                         default="stanley")
     parser.add_argument("--velocity", type=float, default=1.0)
@@ -223,6 +238,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-angular-velocity", type=float, default=3.0)
     parser.add_argument("--max-angular-acceleration", type=float, default=4.0)
     parser.add_argument("--max-wheel-velocity", type=float, default=2.5)
+    parser.add_argument("--front-axle", type=float, default=0.45)
+    parser.add_argument("--rear-axle", type=float, default=0.55)
+    parser.add_argument("--mass", type=float, default=20.0)
+    parser.add_argument("--yaw-inertia", type=float, default=10.0)
+    parser.add_argument("--front-cornering-stiffness", type=float, default=80.0)
+    parser.add_argument("--rear-cornering-stiffness", type=float, default=80.0)
     parser.add_argument("--seed", type=int, default=0)
     return parser
 
@@ -242,13 +263,14 @@ def main(argv: list[str] | None = None) -> int:
             max_deceleration=args.max_deceleration),
     )
     initial = robotnav.RobotState(*DEFAULT_WAYPOINTS[0])
-    models = ("kinematic_bicycle", "differential_drive") \
+    models = ("kinematic_bicycle", "dynamic_bicycle", "differential_drive") \
         if args.model == "both" else (args.model,)
     runs = tuple(run_model(model, trajectory, initial, args, output_dir)
                  for model in models)
     manifest = ExperimentManifest(args.scenario_id, runs)
     manifest_path = output_dir / "experiment_manifest.json"
     manifest.save_json(manifest_path)
+    write_comparison_report(runs, output_dir)
     print(manifest_path)
     for run in runs:
         print(json_summary(run))
@@ -260,6 +282,44 @@ def json_summary(run: RunArtifact) -> str:
         f"{run.scenario.backend.model}: status={run.metrics.status} "
         f"goal_distance={run.metrics.goal_distance:.3f} "
         f"steps={run.metrics.steps}")
+
+
+def write_comparison_report(runs: tuple[RunArtifact, ...], output_dir: Path) -> None:
+    """Write compact JSON/CSV summaries for model-to-model comparisons."""
+    rows = []
+    for run in runs:
+        metrics = run.metrics
+        latency = metrics.compute_latency_ms
+        rows.append({
+            "model": run.scenario.backend.model,
+            "status": metrics.status,
+            "goal_reached": metrics.goal_reached,
+            "steps": metrics.steps,
+            "goal_distance": metrics.goal_distance,
+            "actual_path_length": metrics.actual_path_length,
+            "max_cross_track": metrics.max_cross_track,
+            "mean_cross_track": metrics.mean_cross_track,
+            "max_heading_error": metrics.max_heading_error,
+            "mean_heading_error": metrics.mean_heading_error,
+            "control_effort": metrics.control_effort,
+            "latency_p50_ms": latency.get("p50"),
+            "latency_p95_ms": latency.get("p95"),
+            "latency_p99_ms": latency.get("p99"),
+        })
+    report = {
+        "schema_version": 1,
+        "benchmark": "cross_model_tracking",
+        "scenario_id": runs[0].scenario.scenario_id if runs else "",
+        "runs": rows,
+    }
+    with (output_dir / "comparison.json").open("w", encoding="utf-8") as stream:
+        json.dump(report, stream, indent=2, sort_keys=True, allow_nan=False)
+        stream.write("\n")
+    fields = tuple(rows[0]) if rows else ("model",)
+    with (output_dir / "comparison.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 if __name__ == "__main__":
