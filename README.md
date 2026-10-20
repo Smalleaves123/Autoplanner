@@ -405,7 +405,8 @@ surfaces, and geometrically degenerate fits are excluded/rejected. Set
 `--localization dead_reckoning` for the previous baseline.
 
 This is local known-map localization, **not** SLAM or global relocalization.
-Failed matches fall back to dead reckoning. Pose measurement standard deviations
+Isolated failed matches fall back to dead reckoning with reduced speed;
+repeated failures or stale corrections stop the guarded demo. Pose measurement standard deviations
 are conservative tuning parameters, not an exact ICP covariance; repeated
 scans can share systematic map/ray errors. The demo enables gyro bias estimation
 by default (`--no-estimate-gyro-bias` retains the five-state baseline unless
@@ -418,6 +419,109 @@ dead-reckoning drift, and is not a full 3-D inertial navigation model.
 The demo emits stop commands when motion
 or LiDAR data exceeds `--max-estimate-age` / `--max-scan-age` (seconds). This
 freshness check is not a complete collision-safety supervisor.
+
+`LocalizationHealthMonitor` adds observable health rules without reading truth:
+map-match confirmation, correction-jump gating, failure/recovery streaks,
+capture-time freshness, and EKF position/heading uncertainty. The demo enables
+`--localization-health` by default: `initializing`/`lost` stop, `degraded`
+scales velocity to 0.35, and `tracking` uses nominal speed. Two consecutive
+fused matches initialize/recover; three consecutive failures mark map tracking
+lost. Default age limits are 0.5 s motion/LiDAR and 2 s map correction; default
+correction-jump limits are 0.6 map units / 0.15 rad. Tune with
+`--matches-before-recovery`, `--match-failures-before-lost`,
+`--max-map-correction-age`, `--max-position-std`, `--max-heading-std`,
+`--max-correction-translation`, and `--max-correction-heading`.
+The map-correction age must accommodate match frequency and delivery latency.
+`--no-localization-health` retains the earlier freshness-only control and
+ungated map fusion while still recording health diagnostics. Dead-reckoning
+mode does not require map corrections. The JSON includes per-step diagnostics,
+transition reasons, correction assessments, and gate counts.
+
+Run deterministic healthy, dynamic-only, single-wall, teleport, LiDAR-loss,
+motion-loss, and repeated-room cases:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/benchmark_localization_health.py \
+  --output build/sensor-navigation/localization-health-benchmark.json
+```
+
+This benchmark uses an open-loop stationary trajectory, introduces faults after
+two initial samples, and removes non-alias faults before recovery checks.
+Returning the teleport case to its original pose is **not** global relocalization.
+The repeated-room case intentionally demonstrates wrong-but-healthy tracking:
+small covariance and a good local match cannot resolve identical rooms. Health
+states are heuristics, not correctness probabilities or a safety guarantee.
+
+`GridRelocalizer` adds a separate known-map global-search prototype. It scores
+free-cell/heading lattice seeds against static rays, refines multiple modes
+with `GridScanMatcher`, and reports competing hypotheses. No-hit rays penalize
+unexpected walls; dynamic beams are ignored. A close competing mode returns
+`ambiguous` with **no selected pose**, rather than resetting to an arbitrary
+room. Oversized search lattices return `search_budget_exceeded` before allocation.
+
+```python
+relocalizer = robotnav.GridRelocalizer(map_path)
+result = relocalizer.localize(scan)  # does not read scan.pose or reset EKF
+if result.accepted:
+    candidate = result.pose  # candidate among searched modes, not proven unique
+```
+
+Run persistent-teleport and ambiguity baselines:
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/benchmark_relocalization.py \
+  --output build/sensor-navigation/relocalization-benchmark.json
+```
+
+This benchmark keeps the new pose after teleport: unlike the health benchmark,
+recovery does not depend on returning truth to its original location. It
+explicitly resets EKF only for an accepted global candidate; ambiguous/unsupported
+scans leave the estimator unchanged. `RelocalizationConfig` controls lattice
+spacing/headings, CPU budgets, mode clustering, ray-score cutoff, and ambiguity
+margin. Finite grid sampling and top-seed refinement can miss alternatives;
+scores are not probabilities, and one scan does not establish temporal stability.
+Global search is **not yet automatically connected** to the navigation runner.
+The ordinary local correction gate remains in force. This is not SLAM, AMCL,
+or a real-time global-search guarantee.
+
+`RelocalizationTracker` associates successive global modes using capture-time
+relative SE(2) motion from a separate dead-reckoning stream. It requires three
+consecutive **unique**, motion-consistent scan results before publishing a
+`confirmed` pose. Duplicates/out-of-order timestamps cannot count as evidence;
+search failures, gaps over 1 s, motion inconsistency and ambiguity interrupt
+unique confirmation. Ambiguous modes retain diagnostic track IDs but do not
+become unique simply through repeated observation.
+
+`RelocalizationEpoch` provides an explicit stationary-only handoff for its
+owned EKF/health monitor. `apply(decision, now_ns=..., epoch_id=...,
+stationary=True)` requires a fresh confirmed candidate in the current epoch,
+preserves enabled IMU bias means, resets pose/cross-frame covariance and health,
+and returns required caller resets (motion frame, mapping, obstacle tracks,
+planner, control). Stationarity is a **caller-established condition**, not
+inferred from a candidate's zero velocity. It rejects confirmations older than
+0.5 s, reused/future decisions and epoch mismatches. Moving candidates may be
+confirmed diagnostically but are not supported for this handoff.
+
+Tag each packet with its epoch at capture/enqueue. Route motion through
+`update_motion(packet, epoch_id=tag)` and check delayed scans through
+`accept_packet(scan, epoch_id=tag)` before other consumers; do not relabel old
+queued packets at arrival. After a switch, old tags and capture timestamps at
+or before the new boundary are rejected. External queues and components are
+still caller-owned; automatic navigation recovery is not wired in yet, and
+health must collect fresh observations before motion resumes.
+
+```bash
+PYTHONPATH=build/python-build/python \
+python autoplanner/scripts/benchmark_relocalization_tracking.py \
+  --output build/sensor-navigation/relocalization-tracking-benchmark.json
+```
+
+This benchmark uses independent global searches on four noisy scans per case,
+sensor-derived relative motion, stationary recovery with delayed-packet
+rejection, moving candidate confirmation without application, and persistent
+room ambiguity without arbitrary reset.
 
 For a noisy, delayed straight-route example:
 

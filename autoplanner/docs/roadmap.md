@@ -102,8 +102,17 @@ integration surfaces.
   six-state EKF bias estimation, and identical-stream drift comparison tooling.
 - [x] Add independent forward-acceleration bias/random-walk simulation, optional
   acceleration bias estimation, and identical-stream odometry-outage benchmarks.
-- [ ] Add global relocalization and broader localization
-  failure/ambiguity benchmarks against the dead-reckoning baseline.
+- [x] Add observable localization health, correction-jump gates, failure/recovery
+  hysteresis, and deterministic fault benchmarks including an unresolved
+  repeated-room aliasing limitation.
+- [x] Add bounded multi-hypothesis known-map global search and persistent-teleport,
+  repeated-room, symmetric-room, and unsupported-scan recovery benchmarks.
+- [x] Add multi-scan unique-candidate confirmation, motion-consistent mode
+  association, and a stationary-only EKF/health epoch adapter with old-packet
+  rejection and caller-owned component reset contracts.
+- [ ] Integrate confirmed recovery into navigation with stationarity checks,
+  mapping/tracker/planner resets and a stopped recovery state machine.
+- [ ] Expand noisy/partial-view localization comparisons and scalability benchmarks.
 - [x] Add multi-agent parameter sweeps, trace visualization, and collision
   validation tools.
 - [ ] Store multi-agent runs in the versioned experiment manifest schema used

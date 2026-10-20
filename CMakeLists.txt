@@ -225,6 +225,24 @@ if(BUILD_TESTS AND BUILD_PYTHON_TESTS)
                                  ENVIRONMENT
                                  "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
                                  TIMEOUT 60)
+            robotnav_add_python_test(test_python_robotnav_localization_health
+                                     robotnav/tests/test_localization_health.py)
+            set_tests_properties(test_python_robotnav_localization_health PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 60)
+            robotnav_add_python_test(test_python_robotnav_relocalization
+                                     robotnav/tests/test_relocalization.py)
+            set_tests_properties(test_python_robotnav_relocalization PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 120)
+            robotnav_add_python_test(test_python_robotnav_relocalization_tracking
+                                     robotnav/tests/test_relocalization_tracking.py)
+            set_tests_properties(test_python_robotnav_relocalization_tracking PROPERTIES
+                                 ENVIRONMENT
+                                 "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+                                 TIMEOUT 120)
         endif()
         robotnav_add_python_test(
             test_python_perception_replay

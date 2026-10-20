@@ -201,9 +201,8 @@ class GridScanMatcher:
                     matrix[i][j] += weight * jacobian[i] * jacobian[j]
         return matrix, gradient
 
-    def match(self, scan: LidarScan, hint: RobotState) -> ScanMatchResult:
-        if not all(math.isfinite(value) for value in hint.__dict__.values()):
-            raise ValueError("pose hint must be finite")
+    def _points(self, scan: LidarScan) -> list[tuple[float, float]]:
+        """Validate and subsample usable static/unknown local endpoints."""
         if not (len(scan.angles) == len(scan.ranges) == len(scan.hits)):
             raise ValueError("scan arrays must have equal lengths")
         if scan.kinds and len(scan.kinds) != len(scan.ranges):
@@ -218,6 +217,12 @@ class GridScanMatcher:
         if len(points) > self.config.max_points:
             points = [points[round(index * (len(points) - 1) / (self.config.max_points - 1))]
                       for index in range(self.config.max_points)]
+        return points
+
+    def match(self, scan: LidarScan, hint: RobotState) -> ScanMatchResult:
+        if not all(math.isfinite(value) for value in hint.__dict__.values()):
+            raise ValueError("pose hint must be finite")
+        points = self._points(scan)
         if len(points) < self.config.min_points:
             return ScanMatchResult(False, "insufficient_points", hint, None, None,
                                    0, len(points), 0.0)

@@ -138,6 +138,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         translation_window=args.scan_match_translation_window,
         rotation_window=args.scan_match_rotation_window))
         if args.localization == "scan_matching" else None)
+    health_monitor = robotnav.LocalizationHealthMonitor(robotnav.LocalizationHealthConfig(
+        require_map_matching=matcher is not None,
+        max_motion_age=args.max_estimate_age, max_scan_age=args.max_scan_age,
+        max_match_age=args.max_map_correction_age,
+        max_position_std=args.max_position_std, max_heading_std=args.max_heading_std,
+        max_correction_translation=args.max_correction_translation,
+        max_correction_heading=args.max_correction_heading,
+        failures_before_lost=args.match_failures_before_lost,
+        successes_before_recovery=args.matches_before_recovery))
     pipeline = PerceptionMappingPipeline(
         grid, start, goal, unknown_policy="occupied",
         initial_map_known=True, robot_radius=0.25,
@@ -152,6 +161,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     last_scan_timestamp_ns: int | None = None
     safe_stop_steps = 0
     match_attempts = 0
+    gated_matches = 0
+    health_transitions: list[dict[str, Any]] = []
+    previous_health_status: str | None = None
     for _ in range(args.steps):
         observation = world.observation
         batch = sensors.step(observation)
@@ -181,8 +193,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if matcher is not None and packet.sequence % args.scan_match_every == 0:
                 match_attempts += 1
                 match = matcher.match(packet, capture_pose)
+                assessment = health_monitor.assess_match(match, capture_pose)
                 fused = False
-                if match.accepted:
+                if assessment.accepted or (match.accepted and not args.localization_health):
                     fused = estimator.update(robotnav.PoseMeasurement(
                         packet.sensor_id + "_map", packet.entity_id, packet.sequence,
                         packet.timestamp_ns, packet.arrival_timestamp_ns,
@@ -190,9 +203,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         args.scan_match_position_std, args.scan_match_heading_std))
                     if fused:
                         capture_pose = estimator.estimate_at(packet.timestamp_ns).state
+                gated_matches += int(match.accepted and not assessment.accepted)
+                health_monitor.record_match(
+                    packet.timestamp_ns, accepted=fused,
+                    reason=("matched" if fused else assessment.reason
+                            if not assessment.accepted else "ekf_rejected"))
                 match_records.append({
                     **asdict(match), "sequence": packet.sequence,
                     "timestamp_ns": packet.timestamp_ns, "fused": fused,
+                    "health_assessment": asdict(assessment),
                 })
             # A delayed correction replays EKF history; use the corrected
             # current estimate for the planner's robot cell as well.
@@ -211,6 +230,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         scan_age = (float("inf") if last_scan_timestamp_ns is None else
                     max(0.0, (now_ns - last_scan_timestamp_ns) * 1e-9))
         safe_stop = localization_stale or scan_age > args.max_scan_age
+        health = health_monitor.evaluate(
+            now_ns, estimate,
+            motion_timestamp_ns=(estimator.last_motion_timestamp_ns
+                                 if estimator.accepted_motion_packets else None),
+            scan_timestamp_ns=last_scan_timestamp_ns)
+        if health.status != previous_health_status:
+            health_transitions.append({"time": observation.clock.time,
+                                       "from": previous_health_status, "to": health.status,
+                                       "reasons": health.reasons})
+            previous_health_status = health.status
+        if args.localization_health:
+            safe_stop = safe_stop or health.safe_stop
         safe_stop_steps += int(safe_stop)
         truth = observation.state("robot")  # evaluation only
         goal_reached = math.hypot(
@@ -220,6 +251,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             state, pipeline.path, max_velocity=args.max_velocity,
             max_steering=args.max_steering,
         )
+        if args.localization_health:
+            command = robotnav.ControlCommand(command.velocity * health.velocity_scale,
+                                              command.steering)
         if safe_stop or math.hypot(
                 state.x - (goal[0] + 0.5), state.y - (goal[1] + 0.5)
         ) <= args.goal_tolerance:
@@ -241,6 +275,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "position_error": math.hypot(state.x - truth.x, state.y - truth.y),
             "heading_error": abs(_angle_error(state.theta, truth.theta)),
             "safe_stop": safe_stop,
+            "localization_health": asdict(health),
             "command": command.__dict__,
             "ready_packets": len(batch.ready),
             "dropped": list(batch.dropped),
@@ -284,6 +319,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "stale_scans": stale_scans,
         "skipped_scans": skipped_scans,
         "safe_stop_steps": safe_stop_steps,
+        "health_config": asdict(health_monitor.config),
+        "health_transitions": health_transitions,
+        "gated_matches": gated_matches,
+        "ignored_health_matches": health_monitor.ignored_matches,
         "position_rmse": math.sqrt(sum(row["position_error"] ** 2
                                         for row in trace) / len(trace)),
         "trace": trace,
@@ -340,6 +379,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scan-match-heading-std", type=float, default=0.03)
     parser.add_argument("--max-estimate-age", type=float, default=0.5)
     parser.add_argument("--max-scan-age", type=float, default=0.5)
+    parser.add_argument("--localization-health", action=argparse.BooleanOptionalAction,
+                        default=True, help="gate correction jumps and stop/decelerate on poor health")
+    parser.add_argument("--max-map-correction-age", type=float, default=2.0)
+    parser.add_argument("--max-position-std", type=float, default=1.0)
+    parser.add_argument("--max-heading-std", type=float, default=0.5)
+    parser.add_argument("--max-correction-translation", type=float, default=0.6)
+    parser.add_argument("--max-correction-heading", type=float, default=0.15)
+    parser.add_argument("--match-failures-before-lost", type=int, default=3)
+    parser.add_argument("--matches-before-recovery", type=int, default=2)
     parser.add_argument("--latency-steps", type=int, default=1)
     parser.add_argument("--drop-probability", type=float, default=0.05)
     parser.add_argument("--timestamp-jitter-ns", type=int, default=0)
@@ -356,9 +404,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--steps must be positive")
     if args.scan_match_every <= 0:
         parser.error("--scan-match-every must be positive")
+    if args.match_failures_before_lost <= 0 or args.matches_before_recovery <= 0:
+        parser.error("match failure/recovery counts must be positive")
     for name in ("max_estimate_age", "max_scan_age", "scan_match_position_std",
                  "scan_match_heading_std", "scan_match_translation_window",
-                 "scan_match_rotation_window"):
+                 "scan_match_rotation_window", "max_map_correction_age", "max_position_std",
+                 "max_heading_std", "max_correction_translation", "max_correction_heading"):
         if not math.isfinite(getattr(args, name)) or getattr(args, name) <= 0:
             parser.error(f"--{name.replace('_', '-')} must be finite and positive")
     for name in ("imu_gyro_bias_random_walk", "ekf_gyro_bias_process_std",

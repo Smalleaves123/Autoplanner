@@ -68,8 +68,32 @@ from .sensors import (
 )
 from .estimation import EkfConfig, PlanarEkf, PoseMeasurement, StateEstimate
 from .localization import GridScanMatcher, ScanMatcherConfig, ScanMatchResult
+from .localization_health import (
+    LocalizationHealth, LocalizationHealthConfig, LocalizationHealthMonitor, MatchAssessment,
+)
+from .relocalization import (
+    GridRelocalizer, RelocalizationConfig, RelocalizationHypothesis, RelocalizationResult,
+)
+from .relocalization_tracking import (
+    RelocalizationDecision, RelocalizationEpoch, RelocalizationEpochTransition,
+    RelocalizationTrack, RelocalizationTracker, RelocalizationTrackingConfig,
+)
 
 __all__ = [
+    "RelocalizationDecision",
+    "RelocalizationEpoch",
+    "RelocalizationEpochTransition",
+    "RelocalizationTrack",
+    "RelocalizationTracker",
+    "RelocalizationTrackingConfig",
+    "GridRelocalizer",
+    "RelocalizationConfig",
+    "RelocalizationHypothesis",
+    "RelocalizationResult",
+    "LocalizationHealth",
+    "LocalizationHealthConfig",
+    "LocalizationHealthMonitor",
+    "MatchAssessment",
     "BackendUnavailableError",
     "PlanResult",
     "Planner",

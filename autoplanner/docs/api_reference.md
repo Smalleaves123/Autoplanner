@@ -341,6 +341,58 @@ poor fit, and geometrically ambiguous fits are not fed to the EKF. This is a
 local baseline: bounded search cannot resolve globally repeated structures
 or recover an arbitrarily wrong initial pose.
 
+### Localization health supervision
+
+`LocalizationHealthMonitor(LocalizationHealthConfig(), timestamp_ns=0)` is an
+arrival-time, single-robot/map supervisor, separate from EKF replay. Its inputs
+are estimated state/covariance, sensor timestamps, and match outcomes, never
+simulator truth. `assess_match(match, hint)` rejects matcher failures and
+accepted corrections whose Euclidean translation or wrapped heading jump
+exceeds configured limits; the returned `MatchAssessment` includes reason and
+jump magnitudes. Call it **before** pose fusion.
+`record_match(capture_timestamp_ns, accepted=fused, reason=...)` records actual
+fusion success, not just registration success. Older/equal capture timestamps
+are ignored and counted in `ignored_matches`; one monitor expects one logical
+map correction stream. It does not rewrite past control decisions after late
+EKF updates.
+
+`evaluate(now_ns, estimate, motion_timestamp_ns=..., scan_timestamp_ns=...)`
+requires a current `estimate_at(now_ns)` and monotonic evaluation time. `None`
+means no packet received. Timestamp ages are clamped at zero for forward
+jitter; map freshness uses the last successfully fused capture timestamp, not
+arrival time. Position uncertainty is the square root of the largest XY-block
+covariance eigenvalue; heading std is the heading marginal. These are model
+uncertainties, not calibrated localization confidence.
+
+- `tracking`: required confirmations and freshness/uncertainty checks pass.
+- `degraded`: a previously initialized map tracker has isolated failed matches
+  or incomplete recovery streak; suggested velocity scale defaults to 0.35.
+- `initializing`: map confirmation is incomplete; suggests stop.
+- `lost`: stale motion/scan/map correction, excessive pose uncertainty, repeated
+  failure, or pending recovery after loss; suggests stop.
+
+Default `failures_before_lost=3`, `successes_before_recovery=2` apply to distinct
+capture-time matches. Stale/uncertain ticks reset recovery streaks; long gaps
+between successful captures also interrupt them. Defaults are positive
+`max_motion_age=0.5`, `max_scan_age=0.5`, `max_match_age=2.0` seconds,
+`max_position_std=1.0` map units, `max_heading_std=0.5` rad,
+`max_correction_translation=0.6` map units, and `max_correction_heading=0.15`
+rad. `require_map_matching=False` omits map confirmation/freshness/streak
+requirements for dead reckoning. `reset(timestamp_ns=0)` clears all health
+history, counters, and recovery state.
+
+`LocalizationHealth` exposes status, reasons, stop/velocity-scale suggestion,
+nullable ages, uncertainty, streaks, and last match reason. Navigation applies
+these suggestions by default; it still applies basic freshness checks when
+`--no-localization-health` is selected. Tune map age relative to scan-match
+frequency and latency. This does not certify collision-free operation, resolve
+identical-room aliases, or perform global relocalization. Fault benchmark
+artifacts explicitly report large-error `tracking` steps in repeated rooms;
+truth appears only in sensor generation/evaluation. Recovery in the teleport
+benchmark occurs after the simulated pose returns, not through relocalization.
+
+### Scan-match pose corrections
+
 Accepted results can be sent as `PoseMeasurement` with the original LiDAR
 sequence and capture/arrival timestamps. Its `position_std` / `heading_std`
 are conservative independent uncertainty assumptions, not calibrated full
@@ -349,6 +401,121 @@ records quality diagnostics, and can disable matching with
 `--localization dead_reckoning`. Online matches are not re-registered when a
 later motion observation revises their original hint; accepted pose events
 are replayed as fixed measurements within EKF history.
+
+### Multi-hypothesis known-map relocalization
+
+`GridRelocalizer(map, RelocalizationConfig(), matcher_config=None).localize(scan)`
+performs deterministic coarse global search then bounded local refinement,
+without an initial pose hint or any use of `scan.pose`. The local matcher uses
+the same geometry validation, dynamic-return exclusion, visibility, and
+degeneracy checks as ordinary scan matching. Unknown hit beams are supported;
+all-dynamic/no-hit scans cannot establish a global pose.
+
+Coarse scoring uses grid-DDA static ray ranges. Static hit rays compare
+predicted/observed range; no-hit rays penalize walls closer than the observed
+range. Range residuals are capped at `residual_cap=2.0` map units and squared;
+the mean squared residual is a heuristic score, not a likelihood. Coarse rays
+are evenly subsampled, while refined scores use all non-dynamic rays.
+
+Default controls:
+
+- `translation_step=1.0`, `heading_bins=16`: lattice poses at coordinates
+  `0.5 + i*step`, headings uniformly around the full circle; occupied origins
+  are excluded. Local refinement defaults to windows covering half the grid
+  interval in position/heading, with 31 endpoint samples.
+- `coarse_beams=24`, `max_coarse_poses=50000`, `max_refinements=24`:
+  deterministic work budgets. The full lattice upper bound (including occupied
+  cells) is checked before seed allocation; exceeding it rejects the request
+  rather than scoring only an arbitrary portion of the map.
+- `distinct_translation=1.0`, `distinct_heading=0.4`: poses are distinct if
+  either Euclidean position or wrapped heading separation exceeds its threshold.
+  These suppress nearby coarse seeds and merge refined modes.
+- `max_ray_score=0.08`, `ambiguity_score_margin=0.02` (map units squared):
+  require an adequate best score and reject a competing distinct mode within
+  the margin. Alternatives up to cutoff plus margin are retained for this
+  check, so a near-threshold runner-up is not silently discarded.
+- `max_hypotheses=8`: limits returned hypotheses, not ambiguity checks on all
+  successfully refined distinct modes.
+
+`RelocalizationResult` contains `accepted`, `reason`, nullable selected `pose`,
+ordered `hypotheses`, `coarse_poses`, `refinements`, and nullable `score_gap`.
+Reasons are `localized`, `ambiguous`, `no_match`, `insufficient_points`, or
+`search_budget_exceeded`. `pose` is present only for `localized`;
+`RelocalizationHypothesis` carries pose, full-ray score and local-match diagnostics.
+`score_gap` is the second distinct score minus the best score, not confidence.
+`coarse_poses` counts scored free-cell headings, or the refused lattice bound
+on budget failure (a sentinel above budget for non-finite spacing arithmetic).
+Malformed geometry/configuration raises without mutating an estimator.
+
+The utility never resets/fuses into an EKF implicitly. An accepted candidate is
+only non-ambiguous among the explored/refined modes, not a proof of global
+uniqueness: lattice gaps, top-seed limits, clustering, sensor/map error and
+partial views may hide alternatives. The standalone benchmark compares far-hint local registration to
+global recovery, explicitly resets only accepted candidates, and records
+unresolved symmetric/repeated-room hypotheses. Its stationary post-teleport
+epoch has no pending motion packets. Online consumers must confirm candidates,
+preserve stop behavior during ambiguity, and explicitly handle coordinate-frame
+changes, estimator/health reset, mapping/tracker state, delayed packet queues,
+and epoch boundaries. Large global corrections must not simply bypass the
+local health gate. Automatic navigation integration remains pending.
+
+### Temporal global confirmation and recovery epochs
+
+`RelocalizationTracker(RelocalizationTrackingConfig()).update(result,
+timestamp_ns=scan_capture_ns, motion_pose=dead_reckoning_at_capture)` returns a
+`RelocalizationDecision`. `motion_pose` must remain in one consistent frame;
+map-corrected pose jumps or simulator truth must not supply relative motion.
+Previous map hypotheses are transported using relative SE(2) motion, then
+greedily associated one-to-one under translation/heading tolerances (defaults
+0.3 map units / 0.1 rad). This is deterministic heuristic association, not a
+probabilistic multi-target filter or calibrated confidence model.
+
+Defaults require `confirmations=3` distinct increasing scan timestamps and
+`max_scan_gap=1.0` s. Only a globally accepted best mode earns consecutive
+`unique_frames`; ambiguous results reset unique counts even when multiple
+tracks remain motion-consistent. Missing search results discard tracks, large
+gaps start new tracks, and an unassociated best mode restarts at one frame.
+Duplicate/older timestamps return `out_of_order`, increment `ignored_frames`,
+and leave state unchanged. `reset()` clears association and counters.
+
+`RelocalizationDecision` contains capture timestamp, status, nullable pose and
+current `RelocalizationTrack` diagnostics (ID, pose, consistent/unique counts).
+Statuses are `candidate_pending`, `motion_inconsistent`, `gap_reset`,
+`ambiguous`, `no_match`, `out_of_order`, and `confirmed`. Only `confirmed` has
+a selected pose. Shared systematic errors or missing search alternatives can
+still appear stable; temporal confirmation does not prove correctness.
+
+`RelocalizationEpoch(initial, EkfConfig(), health_config=None,
+timestamp_ns=0, max_confirmation_age=0.5)` owns `ekf` and `health`, with initial
+`epoch_id=0`. `apply(decision, now_ns=..., epoch_id=source_epoch,
+stationary=True)` starts a stationary recovery epoch. Caller must establish
+that the robot is stopped throughout capture-to-application: the adapter does
+not detect stationarity or extrapolate a moving global pose. It rejects
+non-confirmed, stale/future, reused, pre-epoch or wrong-epoch decisions and
+backward application times relative to EKF/health.
+
+On handoff, EKF is recreated at application time with candidate map pose and
+zero velocity/rate. Enabled bias means are preserved; bias std is at least the
+configured initial prior. Pose/cross-state covariance and EKF event history/
+counters reset. Health resets to require fresh motion/scans and map confirmation.
+`epoch_id` increments; `RelocalizationEpochTransition` records application/
+confirmation time and caller-required resets: motion frame, mapping, obstacle
+tracks, planner, control. Reacquire `epoch.ekf` after handoff; an old reference
+does not address the new estimator.
+
+Tag packets/confirmation batches with their source epoch at capture/enqueue,
+not arrival. `update_motion(packet, epoch_id=tag)` filters IMU/odometry before
+fusion; `accept_packet(scan, epoch_id=tag)` filters LiDAR before other consumers.
+Wrong epoch/entity and old captures are counted in `rejected_epoch_packets`.
+The initial epoch accepts its starting timestamp; after handoff, captures at
+or before the new application boundary are rejected. Correct tags remain
+necessary even for old packets with future/jittered timestamps. The adapter
+does not own queues, sensor schedules, maps or planners; callers must discard/
+reinitialize these and not feed the underlying EKF around the filter. The
+multiframe benchmark tests real noisy global search, stopped switching and
+delayed packets, moving confirmation without switching, and persistent room
+ambiguity. Automatic navigation integration and stationarity verification
+remain pending.
 
 ## Middleware-independent perception types
 
